@@ -1,0 +1,672 @@
+package app.anisora;
+
+import android.content.Context;
+import android.graphics.drawable.GradientDrawable;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** Media detail overlay — mirrors src/components/Detail.tsx + InfoTab + WatchTab. */
+public class DetailScreen {
+
+    static final String[][] STATUS_META = {
+            {"CURRENT", "Set as watching", "play"},
+            {"COMPLETED", "Completed", "check"},
+            {"PLANNING", "Plan to watch", "bookmark"},
+            {"PAUSED", "Paused", "pause"},
+            {"DROPPED", "Dropped", "x"},
+            {"REPEATING", "Rewatching", "rotate"},
+    };
+
+    public static View build(final Context c, final MainActivity app, final int id, final JSONObject seed) {
+        final FrameLayout root = new FrameLayout(c);
+        root.setBackgroundColor(Theme.BG0);
+        root.setClickable(true);
+
+        final ScrollView sc = new ScrollView(c);
+        sc.setVerticalScrollBarEnabled(false);
+        final LinearLayout col = Ui.col(c);
+        col.setPadding(0, 0, 0, Ui.dp(60));
+        sc.addView(col, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(sc, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // floating back button
+        final FrameLayout back = new FrameLayout(c);
+        back.setBackground(Ui.ripple(Ui.rounded(0xB3000000, 12, 0x26FFFFFF, 1), 0x33FFFFFF));
+        Icons bi = new Icons(c, "arrow-left", 17, 0xFFFFFFFF);
+        FrameLayout.LayoutParams bip = new FrameLayout.LayoutParams(Ui.dp(17), Ui.dp(17));
+        bip.gravity = Gravity.CENTER;
+        back.addView(bi, bip);
+        FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(Ui.dp(40), Ui.dp(40));
+        bp.setMargins(Ui.dp(14), Ui.dp(14), 0, 0);
+        root.addView(back, bp);
+        back.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                app.closeDetail();
+            }
+        });
+
+        // skeleton header while loading
+        buildSkeleton(c, col, seed);
+
+        Api.fetchDetail(id, new Api.Cb() {
+            public void ok(JSONObject data) {
+                JSONObject d = data.optJSONObject("Media");
+                if (d == null || !root.isAttachedToWindow()) return;
+                col.removeAllViews();
+                buildLoaded(c, app, col, d);
+                root.removeView(back);
+                root.addView(back);
+            }
+
+            public void fail(Exception e) {
+                if (!root.isAttachedToWindow()) return;
+                col.removeAllViews();
+                LinearLayout wrap = Ui.col(c);
+                wrap.setPadding(Ui.dp(16), Ui.dp(90), Ui.dp(16), 0);
+                wrap.addView(Widgets.emptyState(c, "cloud-off", "Couldn't load this title",
+                        "Check your connection and try again."));
+                col.addView(wrap);
+            }
+        });
+
+        return root;
+    }
+
+    private static void buildSkeleton(Context c, LinearLayout col, JSONObject seed) {
+        View banner = Widgets.skel(c, 0);
+        col.addView(banner, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(170)));
+        LinearLayout pad = Ui.col(c);
+        pad.setPadding(Ui.dp(16), Ui.dp(16), Ui.dp(16), 0);
+        View t1 = Widgets.skel(c, 6);
+        pad.addView(t1, Ui.lp(Ui.dp(220), Ui.dp(22)));
+        View t2 = Widgets.skel(c, 6);
+        pad.addView(t2, Ui.lpm(Ui.dp(150), Ui.dp(13), 0, 10, 0, 0));
+        col.addView(pad);
+    }
+
+    private static void buildLoaded(final Context c, final MainActivity app, LinearLayout col, final JSONObject d) {
+        final String titleLang = app.store.getS("titleLang", "romaji");
+        final String title = Api.titleOf(d, titleLang);
+        final boolean isAnime = "ANIME".equals(d.optString("type"));
+        JSONObject cover = d.optJSONObject("coverImage");
+        String color = cover != null ? cover.optString("color", null) : null;
+
+        /* ---------- banner ---------- */
+        FrameLayout bannerBox = new FrameLayout(c);
+        ImageView banner = new ImageView(c);
+        banner.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        banner.setBackground(Widgets.posterFallback("null".equals(color) ? null : color, title));
+        bannerBox.addView(banner, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        String bUrl = d.optString("bannerImage", null);
+        if (bUrl != null && !"null".equals(bUrl)) Images.load(bUrl, banner, 900);
+        View scrim = new View(c);
+        scrim.setBackground(new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
+                new int[]{Theme.BG0, Theme.alpha(Theme.BG0, 140), 0x33000000}));
+        bannerBox.addView(scrim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        col.addView(bannerBox, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(190)));
+
+        /* ---------- header: cover + title ---------- */
+        LinearLayout head = Ui.row(c);
+        head.setGravity(Gravity.BOTTOM);
+        head.setPadding(Ui.dp(16), 0, Ui.dp(16), 0);
+        ((ViewGroup.MarginLayoutParams) newLp(head, col)).topMargin = Ui.dp(-56);
+
+        FrameLayout coverBox = new FrameLayout(c);
+        coverBox.setBackground(Ui.rounded(Theme.BG2, Theme.RADIUS, Theme.LINE, 1));
+        Widgets.clipRounded(coverBox, Theme.RADIUS);
+        ImageView cv = new ImageView(c);
+        cv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        cv.setBackground(Widgets.posterFallback("null".equals(color) ? null : color, title));
+        coverBox.addView(cv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        String cUrl = cover != null ? cover.optString("large", null) : null;
+        if (cUrl != null && !"null".equals(cUrl)) Images.load(cUrl, cv, Ui.dp(110));
+        head.addView(coverBox, Ui.lp(Ui.dp(104), Ui.dp(156)));
+
+        LinearLayout tcol = Ui.col(c);
+        tcol.setPadding(Ui.dp(14), 0, 0, Ui.dp(4));
+        TextView tt = Ui.text(c, title, 19, Theme.TXT, Theme.DISP_BOLD);
+        tt.setMaxLines(3);
+        tcol.addView(tt);
+        // meta chips row
+        StringBuilder meta = new StringBuilder();
+        String fl = Api.formatLabel(d.optString("format", null));
+        if (fl != null && !"null".equals(fl)) meta.append(fl);
+        if (!d.isNull("season") && d.optInt("seasonYear", 0) > 0) {
+            if (meta.length() > 0) meta.append(" · ");
+            meta.append(Api.seasonLabel(d.optString("season"))).append(" ").append(d.optInt("seasonYear"));
+        }
+        String sl = Api.statusLabel(d.optString("status", null));
+        if (sl != null && !"null".equals(sl)) {
+            if (meta.length() > 0) meta.append(" · ");
+            meta.append(sl);
+        }
+        TextView mt = Ui.text(c, meta.toString(), 11.5f, Theme.MUT, Theme.SANS_MED);
+        mt.setPadding(0, Ui.dp(6), 0, 0);
+        tcol.addView(mt);
+        // score + popularity pills
+        LinearLayout pills = Ui.row(c);
+        pills.setPadding(0, Ui.dp(8), 0, 0);
+        int score = d.optInt("averageScore", 0);
+        if (score > 0) {
+            LinearLayout sp = Ui.row(c);
+            sp.setBackground(Ui.rounded(Theme.ACC_SOFT, 999, Theme.ACC_LINE, 1));
+            sp.setPadding(Ui.dp(9), Ui.dp(4), Ui.dp(10), Ui.dp(4));
+            sp.addView(new Icons(c, "star", 10, Theme.STAR), Ui.lp(Ui.dp(10), Ui.dp(10)));
+            sp.addView(Ui.hspace(c, 5));
+            sp.addView(Ui.text(c, score + "%", 11, Theme.TXT, Theme.MONO_BOLD));
+            pills.addView(sp);
+            pills.addView(Ui.hspace(c, 8));
+        }
+        long popu = d.optLong("popularity", 0);
+        if (popu > 0) {
+            LinearLayout pp = Ui.row(c);
+            pp.setBackground(Ui.rounded(Theme.BG1, 999, Theme.LINE, 1));
+            pp.setPadding(Ui.dp(9), Ui.dp(4), Ui.dp(10), Ui.dp(4));
+            pp.addView(new Icons(c, "heart", 10, Theme.ROSE), Ui.lp(Ui.dp(10), Ui.dp(10)));
+            pp.addView(Ui.hspace(c, 5));
+            pp.addView(Ui.text(c, Api.fmt(popu), 11, Theme.MUT, Theme.MONO_BOLD));
+            pills.addView(pp);
+        }
+        tcol.addView(pills);
+        head.addView(tcol, weight1());
+        col.addView(head);
+
+        /* ---------- airing countdown ---------- */
+        JSONObject nae = d.optJSONObject("nextAiringEpisode");
+        if (nae != null) {
+            LinearLayout air = Ui.row(c);
+            air.setBackground(Ui.rounded(Theme.ACC_SOFT, 12, Theme.ACC_LINE, 1));
+            air.setPadding(Ui.dp(13), Ui.dp(9), Ui.dp(13), Ui.dp(9));
+            air.addView(new Icons(c, "clock", 13, Theme.ACC), Ui.lp(Ui.dp(13), Ui.dp(13)));
+            air.addView(Ui.hspace(c, 8));
+            air.addView(Ui.text(c, "Ep " + nae.optInt("episode") + " airs in "
+                    + Api.fmtCountdown(nae.optLong("timeUntilAiring")), 12, Theme.ACC, Theme.SANS_SB));
+            LinearLayout wrap = Ui.col(c);
+            wrap.setPadding(Ui.dp(16), Ui.dp(14), Ui.dp(16), 0);
+            wrap.addView(air);
+            col.addView(wrap);
+        }
+
+        /* ---------- tracking actions ---------- */
+        final LinearLayout actions = Ui.col(c);
+        actions.setPadding(Ui.dp(16), Ui.dp(14), Ui.dp(16), 0);
+        col.addView(actions);
+        renderActions(c, app, actions, d, title);
+
+        /* ---------- tabs: info | watch ---------- */
+        final LinearLayout tabBody = Ui.col(c);
+        JSONArray eps = d.optJSONArray("streamingEpisodes");
+        final boolean hasWatch = isAnime && eps != null && eps.length() > 0;
+        LinearLayout tabsWrap = Ui.col(c);
+        tabsWrap.setPadding(Ui.dp(16), Ui.dp(18), Ui.dp(16), 0);
+        if (hasWatch) {
+            final String[] tab = {"info"};
+            final Runnable[] render = new Runnable[1];
+            render[0] = new Runnable() {
+                public void run() {
+                    tabBody.removeAllViews();
+                    if ("info".equals(tab[0])) buildInfo(c, app, tabBody, d);
+                    else buildWatch(c, app, tabBody, d);
+                }
+            };
+            tabsWrap.addView(Widgets.seg(c, new String[][]{{"info", "Info"}, {"play", "Watch"}}, tab[0],
+                    new Widgets.OnSeg() {
+                        public void pick(String idd) {
+                            tab[0] = idd;
+                            render[0].run();
+                        }
+                    }));
+            col.addView(tabsWrap);
+            col.addView(tabBody);
+            render[0].run();
+        } else {
+            col.addView(tabBody);
+            buildInfo(c, app, tabBody, d);
+        }
+    }
+
+    /* ------------------------------ actions row ------------------------------ */
+
+    private static void renderActions(final Context c, final MainActivity app, final LinearLayout box,
+                                      final JSONObject d, final String title) {
+        box.removeAllViews();
+        final JSONObject e = app.store.entry(d.optInt("id"));
+        final boolean isAnime = "ANIME".equals(d.optString("type"));
+
+        LinearLayout row = Ui.row(c);
+
+        // status button
+        LinearLayout statusBtn = Ui.row(c);
+        statusBtn.setGravity(Gravity.CENTER);
+        boolean tracked = e != null;
+        statusBtn.setBackground(Ui.ripple(
+                tracked ? Ui.rounded(Theme.ACC_SOFT, 14, Theme.ACC_LINE, 1) : Ui.rounded(Theme.ACC, 14, 0, 0),
+                0x33000000));
+        statusBtn.setPadding(Ui.dp(16), Ui.dp(12), Ui.dp(16), Ui.dp(12));
+        int fg = tracked ? Theme.ACC : Theme.ACC_INK;
+        String icon = tracked ? iconFor(e.optString("status")) : "plus";
+        String label = tracked ? Api.statusShort(e.optString("status")) : (isAnime ? "Add to list" : "Add to list");
+        statusBtn.addView(new Icons(c, icon, 15, fg), Ui.lp(Ui.dp(15), Ui.dp(15)));
+        statusBtn.addView(Ui.hspace(c, 8));
+        statusBtn.addView(Ui.text(c, label, 13.5f, fg, Theme.SANS_BOLD));
+        statusBtn.addView(Ui.hspace(c, 6));
+        statusBtn.addView(new Icons(c, "chev-down", 13, fg), Ui.lp(Ui.dp(13), Ui.dp(13)));
+        statusBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                showStatusSheet(c, app, d, title, box);
+            }
+        });
+        LinearLayout.LayoutParams sp = Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sp.weight = 1;
+        row.addView(statusBtn, sp);
+
+        // +1 button
+        if (e != null && !"COMPLETED".equals(e.optString("status"))) {
+            LinearLayout plus = Ui.row(c);
+            plus.setGravity(Gravity.CENTER);
+            plus.setBackground(Ui.ripple(Ui.rounded(Theme.BG1, 14, Theme.LINE, 1), Theme.alpha(Theme.TXT, 26)));
+            plus.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(12));
+            plus.addView(new Icons(c, "plus", 14, Theme.TXT, 2.4f), Ui.lp(Ui.dp(14), Ui.dp(14)));
+            plus.addView(Ui.hspace(c, 6));
+            int total = e.optInt("total", -1);
+            plus.addView(Ui.text(c, e.optInt("progress") + " / " + (total > 0 ? String.valueOf(total) : "?"),
+                    12.5f, Theme.TXT, Theme.MONO_BOLD));
+            plus.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    JSONObject after = app.store.bump(d.optInt("id"));
+                    if (after != null) {
+                        app.toast((isAnime ? "Ep. " : "Ch. ") + after.optInt("progress") + " logged", "check");
+                        renderActions(c, app, box, d, title);
+                    }
+                }
+            });
+            row.addView(plus, Ui.lpm(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 10, 0, 0, 0));
+        }
+        box.addView(row);
+    }
+
+    static String iconFor(String status) {
+        for (int i = 0; i < STATUS_META.length; i++)
+            if (STATUS_META[i][0].equals(status)) return STATUS_META[i][2];
+        return "bookmark";
+    }
+
+    /** Bottom-sheet-style status picker (Pop in Detail.tsx). */
+    private static void showStatusSheet(final Context c, final MainActivity app, final JSONObject d,
+                                        final String title, final LinearLayout actionsBox) {
+        final JSONObject e = app.store.entry(d.optInt("id"));
+        final FrameLayout overlay = new FrameLayout(c);
+        overlay.setBackgroundColor(0x99000000);
+        overlay.setClickable(true);
+
+        LinearLayout sheet = Ui.col(c);
+        sheet.setBackground(Ui.rounded(Theme.BG1, 22, Theme.LINE, 1));
+        sheet.setPadding(Ui.dp(8), Ui.dp(10), Ui.dp(8), Ui.dp(10));
+
+        for (int i = 0; i < STATUS_META.length; i++) {
+            final String sid = STATUS_META[i][0];
+            boolean active = e != null && sid.equals(e.optString("status"));
+            LinearLayout item = Ui.row(c);
+            item.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(12));
+            item.setBackground(active ? Ui.rounded(Theme.ACC_SOFT, 12, 0, 0) : Ui.rounded(0x00000000, 12, 0, 0));
+            item.addView(new Icons(c, STATUS_META[i][2], 15, active ? Theme.ACC : Theme.MUT), Ui.lp(Ui.dp(15), Ui.dp(15)));
+            item.addView(Ui.hspace(c, 11));
+            item.addView(Ui.text(c, STATUS_META[i][1], 13.5f, active ? Theme.ACC : Theme.TXT, Theme.SANS_SB));
+            if (active) {
+                View sprint = new View(c);
+                LinearLayout.LayoutParams wp = Ui.lp(0, 1);
+                wp.weight = 1;
+                item.addView(sprint, wp);
+                item.addView(new Icons(c, "check", 14, Theme.ACC), Ui.lp(Ui.dp(14), Ui.dp(14)));
+            }
+            item.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    setStatus(app, d, title, sid);
+                    ((ViewGroup) overlay.getParent()).removeView(overlay);
+                    renderActions(c, app, actionsBox, d, title);
+                }
+            });
+            sheet.addView(item, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        if (e != null) {
+            sheet.addView(Ui.divider(c));
+            LinearLayout rm = Ui.row(c);
+            rm.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(12));
+            rm.addView(new Icons(c, "x", 15, Theme.ROSE), Ui.lp(Ui.dp(15), Ui.dp(15)));
+            rm.addView(Ui.hspace(c, 11));
+            rm.addView(Ui.text(c, "Remove from list", 13.5f, Theme.ROSE, Theme.SANS_SB));
+            rm.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    app.store.remove(d.optInt("id"));
+                    app.toast("Removed from your list", "trash");
+                    ((ViewGroup) overlay.getParent()).removeView(overlay);
+                    renderActions(c, app, actionsBox, d, title);
+                }
+            });
+            sheet.addView(rm, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        FrameLayout.LayoutParams shp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        shp.gravity = Gravity.BOTTOM;
+        shp.setMargins(Ui.dp(12), 0, Ui.dp(12), Ui.dp(20));
+        overlay.addView(sheet, shp);
+        overlay.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                ((ViewGroup) overlay.getParent()).removeView(overlay);
+            }
+        });
+        app.overlayRoot().addView(overlay, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private static void setStatus(MainActivity app, JSONObject d, String title, String status) {
+        try {
+            JSONObject e = app.store.entry(d.optInt("id"));
+            if (e == null) {
+                e = new JSONObject();
+                e.put("id", d.optInt("id"));
+                e.put("type", d.optString("type"));
+                e.put("title", title);
+                JSONObject cov = d.optJSONObject("coverImage");
+                if (cov != null) {
+                    e.put("cover", cov.optString("large", null));
+                    e.put("color", cov.optString("color", null));
+                }
+                e.put("progress", 0);
+                int total = "MANGA".equals(d.optString("type")) ? d.optInt("chapters", -1) : d.optInt("episodes", -1);
+                if (total > 0) e.put("total", total);
+            }
+            e.put("status", status);
+            if ("COMPLETED".equals(status) && e.optInt("total", -1) > 0) e.put("progress", e.optInt("total"));
+            app.store.upsert(e);
+            app.toast(Api.statusShort(status) + " — " + (title.length() > 26 ? title.substring(0, 26) + "…" : title), "check");
+        } catch (Exception ignored) {
+        }
+    }
+
+    /* -------------------------------- info tab -------------------------------- */
+
+    private static void buildInfo(final Context c, final MainActivity app, LinearLayout col, final JSONObject d) {
+        final boolean isAnime = "ANIME".equals(d.optString("type"));
+
+        // description
+        String desc = d.optString("description", null);
+        if (desc != null && !"null".equals(desc) && desc.length() > 0) {
+            LinearLayout wrap = Ui.col(c);
+            wrap.setPadding(Ui.dp(16), Ui.dp(20), Ui.dp(16), 0);
+            wrap.addView(Widgets.sectionHead(c, "info", "Synopsis", null));
+            final TextView dt = Ui.text(c, desc.replaceAll("<br>", "\n").replaceAll("<[^>]+>", ""), 13, Theme.MUT, Theme.SANS);
+            dt.setLineSpacing(Ui.dp(4), 1f);
+            dt.setMaxLines(6);
+            dt.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            wrap.addView(dt);
+            final TextView more = Ui.text(c, "Read more", 12, Theme.ACC, Theme.SANS_SB);
+            more.setPadding(0, Ui.dp(8), 0, 0);
+            more.setOnClickListener(new View.OnClickListener() {
+                boolean open = false;
+
+                public void onClick(View v) {
+                    open = !open;
+                    dt.setMaxLines(open ? 9999 : 6);
+                    more.setText(open ? "Show less" : "Read more");
+                }
+            });
+            wrap.addView(more);
+            col.addView(wrap);
+        }
+
+        // info grid
+        LinearLayout gwrap = Ui.col(c);
+        gwrap.setPadding(Ui.dp(16), Ui.dp(22), Ui.dp(16), 0);
+        gwrap.addView(Widgets.sectionHead(c, "grid", "Information", null));
+        LinearLayout card = Ui.col(c);
+        card.setBackground(Ui.rounded(Theme.BG1, 16, Theme.LINE, 1));
+        card.setPadding(Ui.dp(14), Ui.dp(6), Ui.dp(14), Ui.dp(6));
+        addInfo(c, card, "Format", Api.formatLabel(d.optString("format", null)));
+        addInfo(c, card, "Status", Api.statusLabel(d.optString("status", null)));
+        if (isAnime) {
+            if (d.optInt("episodes", 0) > 0) addInfo(c, card, "Episodes", String.valueOf(d.optInt("episodes")));
+            if (d.optInt("duration", 0) > 0) addInfo(c, card, "Duration", d.optInt("duration") + " min");
+        } else {
+            if (d.optInt("chapters", 0) > 0) addInfo(c, card, "Chapters", String.valueOf(d.optInt("chapters")));
+            if (d.optInt("volumes", 0) > 0) addInfo(c, card, "Volumes", String.valueOf(d.optInt("volumes")));
+        }
+        addInfo(c, card, "Start date", Api.fmtDate(d.optJSONObject("startDate")));
+        addInfo(c, card, "End date", Api.fmtDate(d.optJSONObject("endDate")));
+        if (!d.isNull("source")) addInfo(c, card, "Source", Api.sourceLabel(d.optString("source")));
+        int mean = d.optInt("meanScore", 0);
+        if (mean > 0) addInfo(c, card, "Mean score", mean + "%");
+        long fav = d.optLong("favourites", 0);
+        if (fav > 0) addInfo(c, card, "Favourites", Api.fmt(fav));
+        JSONObject studios = d.optJSONObject("studios");
+        if (studios != null) {
+            JSONArray nodes = studios.optJSONArray("nodes");
+            if (nodes != null && nodes.length() > 0) {
+                StringBuilder s = new StringBuilder();
+                for (int i = 0; i < nodes.length(); i++) {
+                    if (i > 0) s.append(", ");
+                    s.append(nodes.optJSONObject(i).optString("name"));
+                }
+                addInfo(c, card, "Studio", s.toString());
+            }
+        }
+        gwrap.addView(card);
+        col.addView(gwrap);
+
+        // genres
+        JSONArray genres = d.optJSONArray("genres");
+        if (genres != null && genres.length() > 0) {
+            LinearLayout gw = Ui.col(c);
+            gw.setPadding(Ui.dp(16), Ui.dp(22), Ui.dp(16), 0);
+            gw.addView(Widgets.sectionHead(c, "sparkles", "Genres", null));
+            List<String> gl = new ArrayList<String>();
+            for (int i = 0; i < genres.length(); i++) gl.add(genres.optString(i));
+            gw.addView(Widgets.wrapChips(c, gl, 3));
+            col.addView(gw);
+        }
+
+        // characters rail
+        JSONObject chars = d.optJSONObject("characters");
+        if (chars != null) {
+            JSONArray edges = chars.optJSONArray("edges");
+            if (edges != null && edges.length() > 0) {
+                LinearLayout cw = Ui.col(c);
+                cw.setPadding(Ui.dp(16), Ui.dp(22), Ui.dp(16), 0);
+                cw.addView(Widgets.sectionHead(c, "user", "Characters", "Tap a card on AniList for more"));
+                HorizontalScrollView hs = new HorizontalScrollView(c);
+                hs.setHorizontalScrollBarEnabled(false);
+                LinearLayout row = Ui.row(c);
+                row.setGravity(Gravity.TOP);
+                for (int i = 0; i < edges.length(); i++) {
+                    JSONObject edge = edges.optJSONObject(i);
+                    if (edge == null) continue;
+                    JSONObject node = edge.optJSONObject("node");
+                    if (node == null) continue;
+                    LinearLayout cc = Ui.col(c);
+                    FrameLayout ib = new FrameLayout(c);
+                    ib.setBackground(Ui.rounded(Theme.BG2, 14, Theme.LINE, 1));
+                    Widgets.clipRounded(ib, 14);
+                    ImageView iv = new ImageView(c);
+                    iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                    ib.addView(iv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                    JSONObject img = node.optJSONObject("image");
+                    if (img != null) Images.load(img.optString("large", null), iv, Ui.dp(84));
+                    cc.addView(ib, Ui.lp(Ui.dp(84), Ui.dp(112)));
+                    TextView nm = Ui.oneLine(Ui.text(c, node.optJSONObject("name") != null
+                            ? node.optJSONObject("name").optString("full") : "", 11.5f, Theme.TXT, Theme.SANS_SB));
+                    nm.setPadding(Ui.dp(2), Ui.dp(6), Ui.dp(2), 0);
+                    nm.setMaxWidth(Ui.dp(84));
+                    cc.addView(nm);
+                    String role = edge.optString("role", "");
+                    TextView rl = Ui.oneLine(Ui.text(c, role.length() > 0
+                            ? role.substring(0, 1) + role.substring(1).toLowerCase() : "", 10, Theme.MUT, Theme.SANS_MED));
+                    rl.setPadding(Ui.dp(2), Ui.dp(2), Ui.dp(2), 0);
+                    rl.setMaxWidth(Ui.dp(84));
+                    cc.addView(rl);
+                    row.addView(cc, Ui.lpm(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, i == 0 ? 0 : 12, 0, 0, 0));
+                }
+                hs.addView(row);
+                cw.addView(hs);
+                col.addView(cw);
+            }
+        }
+
+        // relations rail
+        JSONObject relations = d.optJSONObject("relations");
+        if (relations != null) {
+            JSONArray redges = relations.optJSONArray("edges");
+            if (redges != null && redges.length() > 0) {
+                JSONArray media = new JSONArray();
+                for (int i = 0; i < redges.length(); i++) {
+                    JSONObject edge = redges.optJSONObject(i);
+                    JSONObject node = edge != null ? edge.optJSONObject("node") : null;
+                    if (node != null) media.put(node);
+                }
+                if (media.length() > 0) {
+                    LinearLayout rw = Ui.col(c);
+                    rw.setPadding(Ui.dp(16), Ui.dp(22), Ui.dp(16), 0);
+                    rw.addView(Cards.rail(c, app, "layers", "Relations", "Sequels, prequels & spin-offs", media, 118,
+                            new Cards.OnMedia() {
+                                public void open(JSONObject m) {
+                                    app.openDetail(m.optInt("id"), m);
+                                }
+                            }));
+                    col.addView(rw);
+                }
+            }
+        }
+
+        // recommendations rail
+        JSONObject recs = d.optJSONObject("recommendations");
+        if (recs != null) {
+            JSONArray nodes = recs.optJSONArray("nodes");
+            if (nodes != null && nodes.length() > 0) {
+                JSONArray media = new JSONArray();
+                for (int i = 0; i < nodes.length(); i++) {
+                    JSONObject n = nodes.optJSONObject(i);
+                    JSONObject m = n != null ? n.optJSONObject("mediaRecommendation") : null;
+                    if (m != null) media.put(m);
+                }
+                if (media.length() > 0) {
+                    LinearLayout rw = Ui.col(c);
+                    rw.setPadding(Ui.dp(16), Ui.dp(22), Ui.dp(16), 0);
+                    rw.addView(Cards.rail(c, app, "heart", "You might also like", "Rated by the community", media, 118,
+                            new Cards.OnMedia() {
+                                public void open(JSONObject m) {
+                                    app.openDetail(m.optInt("id"), m);
+                                }
+                            }));
+                    col.addView(rw);
+                }
+            }
+        }
+    }
+
+    private static void addInfo(Context c, LinearLayout card, String label, String value) {
+        if (value == null || "null".equals(value) || value.length() == 0) return;
+        LinearLayout r = Ui.row(c);
+        r.setPadding(0, Ui.dp(9), 0, Ui.dp(9));
+        TextView l = Ui.text(c, label, 12, Theme.MUT, Theme.SANS_MED);
+        LinearLayout.LayoutParams lp = Ui.lp(Ui.dp(110), ViewGroup.LayoutParams.WRAP_CONTENT);
+        r.addView(l, lp);
+        TextView v = Ui.text(c, value, 12.5f, Theme.TXT, Theme.SANS_SB);
+        LinearLayout.LayoutParams vp = Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT);
+        vp.weight = 1;
+        r.addView(v, vp);
+        card.addView(r);
+    }
+
+    /* -------------------------------- watch tab -------------------------------- */
+
+    private static void buildWatch(final Context c, final MainActivity app, LinearLayout col, JSONObject d) {
+        JSONArray eps = d.optJSONArray("streamingEpisodes");
+        LinearLayout wrap = Ui.col(c);
+        wrap.setPadding(Ui.dp(16), Ui.dp(20), Ui.dp(16), 0);
+        wrap.addView(Widgets.sectionHead(c, "play", "Episodes",
+                eps.length() + " available · AniWatch · " + app.store.getS("quality", "1080p") + " · sub"));
+
+        boolean thumbs = app.store.getB("showThumbs", true);
+        for (int i = 0; i < eps.length(); i++) {
+            JSONObject ep = eps.optJSONObject(i);
+            if (ep == null) continue;
+            final String et = ep.optString("title", "Episode " + (i + 1));
+            LinearLayout row = Ui.row(c);
+            row.setBackground(Ui.ripple(Ui.rounded(Theme.BG1, 14, Theme.LINE, 1), Theme.alpha(Theme.TXT, 26)));
+            row.setPadding(Ui.dp(10), Ui.dp(10), Ui.dp(12), Ui.dp(10));
+
+            if (thumbs) {
+                FrameLayout tb = new FrameLayout(c);
+                tb.setBackground(Ui.rounded(Theme.BG2, 10, Theme.LINE, 1));
+                Widgets.clipRounded(tb, 10);
+                ImageView iv = new ImageView(c);
+                iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                tb.addView(iv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                Images.load(ep.optString("thumbnail", null), iv, Ui.dp(104));
+                FrameLayout pb = new FrameLayout(c);
+                pb.setBackground(Ui.circle(0x99000000));
+                Icons pi = new Icons(c, "play", 11, 0xFFFFFFFF);
+                FrameLayout.LayoutParams pip = new FrameLayout.LayoutParams(Ui.dp(11), Ui.dp(11));
+                pip.gravity = Gravity.CENTER;
+                pip.leftMargin = Ui.dp(2);
+                pb.addView(pi, pip);
+                FrameLayout.LayoutParams pbp = new FrameLayout.LayoutParams(Ui.dp(26), Ui.dp(26));
+                pbp.gravity = Gravity.CENTER;
+                tb.addView(pb, pbp);
+                row.addView(tb, Ui.lpm(Ui.dp(104), Ui.dp(58), 0, 0, 12, 0));
+            } else {
+                FrameLayout pb = new FrameLayout(c);
+                pb.setBackground(Ui.rounded(Theme.ACC_SOFT, 10, Theme.ACC_LINE, 1));
+                Icons pi = new Icons(c, "play", 13, Theme.ACC);
+                FrameLayout.LayoutParams pip = new FrameLayout.LayoutParams(Ui.dp(13), Ui.dp(13));
+                pip.gravity = Gravity.CENTER;
+                pb.addView(pi, pip);
+                row.addView(pb, Ui.lpm(Ui.dp(38), Ui.dp(38), 0, 0, 12, 0));
+            }
+
+            LinearLayout tc = Ui.col(c);
+            TextView t1 = Ui.text(c, et, 12.5f, Theme.TXT, Theme.SANS_SB);
+            t1.setMaxLines(2);
+            tc.addView(t1);
+            TextView t2 = Ui.text(c, "HD-1 · " + app.store.getS("quality", "1080p") + " · sub", 10.5f, Theme.MUT, Theme.MONO_MED);
+            t2.setPadding(0, Ui.dp(3), 0, 0);
+            tc.addView(t2);
+            LinearLayout.LayoutParams tp = Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tp.weight = 1;
+            row.addView(tc, tp);
+
+            row.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    app.toast("Demo build — playback is stubbed", "play");
+                }
+            });
+            wrap.addView(row, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, i == 0 ? 0 : 10, 0, 0));
+        }
+        col.addView(wrap);
+    }
+
+    /* --------------------------------- helpers --------------------------------- */
+
+    private static ViewGroup.MarginLayoutParams newLp(View v, LinearLayout parent) {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        v.setLayoutParams(p);
+        return p;
+    }
+
+    private static LinearLayout.LayoutParams weight1() {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT);
+        p.weight = 1;
+        return p;
+    }
+}
