@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 32 32" fill="none">
+  <!-- Anisora launcher icon: same mark as src/bits.tsx Logo, on the app's bg0 -->
+  <defs>
+    <linearGradient id="lg-core" x1="9" y1="9" x2="23" y2="23" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3DB4F2" />
+      <stop offset="1" stop-color="#B9E2FA" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#0A0C11" />
+  <circle cx="16" cy="16" r="6.5" fill="url(#lg-core)" />
+  <ellipse cx="16" cy="16" rx="14" ry="5.4" stroke="#3DB4F2" stroke-width="1.5" transform="rotate(-22 16 16)" opacity=".9" />
+  <circle cx="27" cy="11" r="1.9" fill="#3DB4F2" />
+</svg>
