@@ -283,18 +283,162 @@ public class DetailScreen {
             int total = e.optInt("total", -1);
             plus.addView(Ui.text(c, e.optInt("progress") + " / " + (total > 0 ? String.valueOf(total) : "?"),
                     12.5f, Theme.TXT, Theme.MONO_BOLD));
+            Ui.press(plus);
             plus.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
                     JSONObject after = app.store.bump(d.optInt("id"));
                     if (after != null) {
-                        app.toast((isAnime ? "Ep. " : "Ch. ") + after.optInt("progress") + " logged", "check");
+                        Anilist.push(app, after);
+                        app.toast((isAnime ? "Ep. " : "Ch. ") + after.optInt("progress") + " logged"
+                                + (Anilist.authed() ? " · synced to AniList" : ""), "check");
                         renderActions(c, app, box, d, title);
                     }
                 }
             });
             row.addView(plus, Ui.lpm(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 10, 0, 0, 0));
         }
+
+        // rate button
+        if (e != null) {
+            LinearLayout rate = Ui.row(c);
+            rate.setGravity(Gravity.CENTER);
+            rate.setBackground(Ui.ripple(Ui.rounded(Theme.BG1, 14, Theme.LINE, 1), Theme.alpha(Theme.TXT, 26)));
+            rate.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(12));
+            int myScore = e.optInt("score", 0);
+            rate.addView(new Icons(c, "star", 14, myScore > 0 ? Theme.STAR : Theme.MUT), Ui.lp(Ui.dp(14), Ui.dp(14)));
+            rate.addView(Ui.hspace(c, 6));
+            rate.addView(Ui.text(c, myScore > 0 ? scoreLabel(app, myScore) : "Rate",
+                    12.5f, myScore > 0 ? Theme.TXT : Theme.MUT, Theme.MONO_BOLD));
+            Ui.press(rate);
+            rate.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    showScoreSheet(c, app, d, title, box);
+                }
+            });
+            row.addView(rate, Ui.lpm(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 10, 0, 0, 0));
+        }
         box.addView(row);
+    }
+
+    /** Format a 0-100 raw score in the user's chosen score format. */
+    static String scoreLabel(MainActivity app, int raw) {
+        String f = app.store.getS("scoreFormat", "100");
+        if ("10".equals(f)) {
+            String s = String.valueOf(Math.round(raw / 10.0 * 10) / 10.0);
+            return (s.endsWith(".0") ? s.substring(0, s.length() - 2) : s) + "/10";
+        }
+        if ("5".equals(f)) return Math.max(1, Math.round(raw / 20f)) + "★";
+        return raw + "/100";
+    }
+
+    /** Score picker sheet — writes locally and pushes to AniList when signed in. */
+    private static void showScoreSheet(final Context c, final MainActivity app, final JSONObject d,
+                                       final String title, final LinearLayout actionsBox) {
+        final JSONObject e = app.store.entry(d.optInt("id"));
+        if (e == null) return;
+        final FrameLayout overlay = new FrameLayout(c);
+        overlay.setBackgroundColor(0x99000000);
+        overlay.setClickable(true);
+
+        LinearLayout sheet = Ui.col(c);
+        sheet.setBackground(Ui.rounded(Theme.BG1, 22, Theme.LINE, 1));
+        sheet.setPadding(Ui.dp(18), Ui.dp(18), Ui.dp(18), Ui.dp(18));
+
+        sheet.addView(Ui.text(c, "Your score", 16, Theme.TXT, Theme.DISP_BOLD));
+        TextView sub = Ui.text(c, Anilist.authed() ? "Saves straight to your AniList profile" : "Stored on this device (guest)", 11, Theme.MUT, Theme.SANS);
+        sub.setPadding(0, Ui.dp(3), 0, 0);
+        sheet.addView(sub);
+        sheet.addView(Ui.space(c, 16));
+
+        final int[] val = {e.optInt("score", 75)};
+        if (val[0] <= 0) val[0] = 75;
+        LinearLayout srow = Ui.row(c);
+        final TextView big = Ui.text(c, scoreLabel(app, val[0]), 22, Theme.ACC, Theme.MONO_BOLD);
+        final android.widget.SeekBar sb = new android.widget.SeekBar(c);
+        sb.setMax(100);
+        sb.setProgress(val[0]);
+        sb.getProgressDrawable().setColorFilter(Theme.ACC, android.graphics.PorterDuff.Mode.SRC_IN);
+        sb.getThumb().setColorFilter(Theme.ACC, android.graphics.PorterDuff.Mode.SRC_IN);
+        sb.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(android.widget.SeekBar s, int v, boolean u) {
+                val[0] = v;
+                big.setText(scoreLabel(app, v));
+            }
+
+            public void onStartTrackingTouch(android.widget.SeekBar s) {
+            }
+
+            public void onStopTrackingTouch(android.widget.SeekBar s) {
+            }
+        });
+        LinearLayout.LayoutParams sp2 = Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sp2.weight = 1;
+        srow.addView(sb, sp2);
+        srow.addView(Ui.hspace(c, 12));
+        srow.addView(big);
+        sheet.addView(srow);
+        sheet.addView(Ui.space(c, 16));
+
+        LinearLayout btns = Ui.row(c);
+        LinearLayout save = Ui.row(c);
+        save.setGravity(Gravity.CENTER);
+        save.setBackground(Ui.ripple(Ui.rounded(Theme.ACC, 12, 0, 0), 0x33000000));
+        save.setPadding(Ui.dp(16), Ui.dp(11), Ui.dp(16), Ui.dp(11));
+        save.addView(Ui.text(c, "Save score", 13, Theme.ACC_INK, Theme.SANS_BOLD));
+        save.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                try {
+                    e.put("score", val[0]);
+                } catch (Exception ignored) {
+                }
+                app.store.upsert(e);
+                Anilist.push(app, e);
+                app.toast("Scored " + scoreLabel(app, val[0]) + (Anilist.authed() ? " · synced to AniList" : ""), "check");
+                ViewGroup p = (ViewGroup) overlay.getParent();
+                if (p != null) p.removeView(overlay);
+                renderActions(c, app, actionsBox, d, title);
+            }
+        });
+        LinearLayout.LayoutParams svp = Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT);
+        svp.weight = 1;
+        btns.addView(save, svp);
+
+        if (e.optInt("score", 0) > 0) {
+            LinearLayout clear = Ui.row(c);
+            clear.setGravity(Gravity.CENTER);
+            clear.setBackground(Ui.ripple(Ui.rounded(Theme.BG2, 12, Theme.LINE, 1), Theme.alpha(Theme.TXT, 26)));
+            clear.setPadding(Ui.dp(16), Ui.dp(11), Ui.dp(16), Ui.dp(11));
+            clear.addView(Ui.text(c, "Clear", 13, Theme.MUT, Theme.SANS_SB));
+            clear.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    e.remove("score");
+                    app.store.upsert(e);
+                    Anilist.push(app, e);
+                    app.toast("Score cleared", "info");
+                    ViewGroup p = (ViewGroup) overlay.getParent();
+                    if (p != null) p.removeView(overlay);
+                    renderActions(c, app, actionsBox, d, title);
+                }
+            });
+            btns.addView(clear, Ui.lpm(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 10, 0, 0, 0));
+        }
+        sheet.addView(btns);
+
+        FrameLayout.LayoutParams shp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        shp.gravity = Gravity.BOTTOM;
+        shp.setMargins(Ui.dp(12), 0, Ui.dp(12), Ui.dp(20));
+        overlay.addView(sheet, shp);
+        if (!Theme.REDUCE_MOTION) {
+            sheet.setTranslationY(Ui.dp(30));
+            sheet.animate().translationY(0).setDuration(200).start();
+        }
+        overlay.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                ViewGroup p = (ViewGroup) overlay.getParent();
+                if (p != null) p.removeView(overlay);
+            }
+        });
+        app.overlayRoot().addView(overlay, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     static String iconFor(String status) {
@@ -350,8 +494,9 @@ public class DetailScreen {
             rm.addView(Ui.text(c, "Remove from list", 13.5f, Theme.ROSE, Theme.SANS_SB));
             rm.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
+                    Anilist.delete(app, e);
                     app.store.remove(d.optInt("id"));
-                    app.toast("Removed from your list", "trash");
+                    app.toast("Removed from your list" + (Anilist.authed() ? " · AniList updated" : ""), "trash");
                     ((ViewGroup) overlay.getParent()).removeView(overlay);
                     renderActions(c, app, actionsBox, d, title);
                 }
@@ -391,7 +536,9 @@ public class DetailScreen {
             e.put("status", status);
             if ("COMPLETED".equals(status) && e.optInt("total", -1) > 0) e.put("progress", e.optInt("total"));
             app.store.upsert(e);
-            app.toast(Api.statusShort(status) + " — " + (title.length() > 26 ? title.substring(0, 26) + "…" : title), "check");
+            Anilist.push(app, e);
+            app.toast(Api.statusShort(status) + " — " + (title.length() > 26 ? title.substring(0, 26) + "…" : title)
+                    + (Anilist.authed() ? " · synced" : ""), "check");
         } catch (Exception ignored) {
         }
     }
@@ -515,11 +662,75 @@ public class DetailScreen {
                     rl.setPadding(Ui.dp(2), Ui.dp(2), Ui.dp(2), 0);
                     rl.setMaxWidth(Ui.dp(84));
                     cc.addView(rl);
+                    Ui.press(cc);
+                    final int pid = node.optInt("id");
+                    final String pname = node.optJSONObject("name") != null ? node.optJSONObject("name").optString("full") : "";
+                    final String pimg = img != null ? img.optString("large", null) : null;
+                    final String prole = role;
+                    cc.setOnClickListener(new View.OnClickListener() {
+                        public void onClick(View v) {
+                            PersonScreen.open(c, app, "character", pid, pname, pimg, prole);
+                        }
+                    });
                     row.addView(cc, Ui.lpm(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, i == 0 ? 0 : 12, 0, 0, 0));
                 }
                 hs.addView(row);
                 cw.addView(hs);
                 col.addView(cw);
+            }
+        }
+
+        // staff rail (StaffCard section in InfoTab.tsx)
+        JSONObject staff = d.optJSONObject("staff");
+        if (staff != null) {
+            JSONArray sedges = staff.optJSONArray("edges");
+            if (sedges != null && sedges.length() > 0) {
+                LinearLayout sw = Ui.col(c);
+                sw.setPadding(Ui.dp(16), Ui.dp(22), Ui.dp(16), 0);
+                sw.addView(Widgets.sectionHead(c, "users", "Staff", "Direction, music, character design"));
+                HorizontalScrollView shs = new HorizontalScrollView(c);
+                shs.setHorizontalScrollBarEnabled(false);
+                LinearLayout srow = Ui.row(c);
+                srow.setGravity(Gravity.TOP);
+                for (int i = 0; i < sedges.length(); i++) {
+                    JSONObject edge = sedges.optJSONObject(i);
+                    if (edge == null) continue;
+                    JSONObject node = edge.optJSONObject("node");
+                    if (node == null) continue;
+                    LinearLayout scCard = Ui.col(c);
+                    FrameLayout ib = new FrameLayout(c);
+                    ib.setBackground(Ui.rounded(Theme.BG2, 14, Theme.LINE, 1));
+                    Widgets.clipRounded(ib, 14);
+                    ImageView iv = new ImageView(c);
+                    iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                    ib.addView(iv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                    JSONObject img = node.optJSONObject("image");
+                    if (img != null) Images.load(img.optString("large", null), iv, Ui.dp(84));
+                    scCard.addView(ib, Ui.lp(Ui.dp(84), Ui.dp(112)));
+                    TextView nm = Ui.oneLine(Ui.text(c, node.optJSONObject("name") != null
+                            ? node.optJSONObject("name").optString("full") : "", 11.5f, Theme.TXT, Theme.SANS_SB));
+                    nm.setPadding(Ui.dp(2), Ui.dp(6), Ui.dp(2), 0);
+                    nm.setMaxWidth(Ui.dp(84));
+                    scCard.addView(nm);
+                    TextView rl = Ui.oneLine(Ui.text(c, edge.optString("role", ""), 10, Theme.MUT, Theme.SANS_MED));
+                    rl.setPadding(Ui.dp(2), Ui.dp(2), Ui.dp(2), 0);
+                    rl.setMaxWidth(Ui.dp(84));
+                    scCard.addView(rl);
+                    Ui.press(scCard);
+                    final int pid = node.optInt("id");
+                    final String pname = node.optJSONObject("name") != null ? node.optJSONObject("name").optString("full") : "";
+                    final String pimg = img != null ? img.optString("large", null) : null;
+                    final String prole = edge.optString("role", null);
+                    scCard.setOnClickListener(new View.OnClickListener() {
+                        public void onClick(View v) {
+                            PersonScreen.open(c, app, "staff", pid, pname, pimg, prole);
+                        }
+                    });
+                    srow.addView(scCard, Ui.lpm(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, i == 0 ? 0 : 12, 0, 0, 0));
+                }
+                shs.addView(srow);
+                sw.addView(shs);
+                col.addView(sw);
             }
         }
 
@@ -590,8 +801,9 @@ public class DetailScreen {
 
     /* -------------------------------- watch tab -------------------------------- */
 
-    private static void buildWatch(final Context c, final MainActivity app, LinearLayout col, JSONObject d) {
-        JSONArray eps = d.optJSONArray("streamingEpisodes");
+    private static void buildWatch(final Context c, final MainActivity app, LinearLayout col, final JSONObject d) {
+        final JSONArray eps = d.optJSONArray("streamingEpisodes");
+        final String head = Api.titleOf(d, app.store.getS("titleLang", "romaji"));
         LinearLayout wrap = Ui.col(c);
         wrap.setPadding(Ui.dp(16), Ui.dp(20), Ui.dp(16), 0);
         wrap.addView(Widgets.sectionHead(c, "play", "Episodes",
@@ -602,6 +814,17 @@ public class DetailScreen {
             JSONObject ep = eps.optJSONObject(i);
             if (ep == null) continue;
             final String et = ep.optString("title", "Episode " + (i + 1));
+            final String thumb = ep.optString("thumbnail", null);
+            int n = i + 1;
+            // pull the number out of "Episode 12 - …" style titles like epNum() on web
+            java.util.regex.Matcher mm = java.util.regex.Pattern.compile("(\\d+)").matcher(et);
+            if (mm.find()) {
+                try {
+                    n = Integer.parseInt(mm.group(1));
+                } catch (Exception ignored) {
+                }
+            }
+            final int epn = n;
             LinearLayout row = Ui.row(c);
             row.setBackground(Ui.ripple(Ui.rounded(Theme.BG1, 14, Theme.LINE, 1), Theme.alpha(Theme.TXT, 26)));
             row.setPadding(Ui.dp(10), Ui.dp(10), Ui.dp(12), Ui.dp(10));
@@ -648,7 +871,29 @@ public class DetailScreen {
 
             row.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
-                    app.toast("Demo build — playback is stubbed", "play");
+                    PlayerScreen.open(c, app, head, epn, et, thumb, new PlayerScreen.OnDone() {
+                        public void done(int num) {
+                            if (app.store.getB("autoProgress", true)) {
+                                JSONObject e = app.store.entry(d.optInt("id"));
+                                if (e != null && num > e.optInt("progress", 0)) {
+                                    try {
+                                        e.put("progress", num);
+                                        String st = e.optString("status");
+                                        int total = e.optInt("total", -1);
+                                        if (total > 0 && num >= total) e.put("status", "COMPLETED");
+                                        else if ("PLANNING".equals(st) || "PAUSED".equals(st)) e.put("status", "CURRENT");
+                                    } catch (Exception ignored) {
+                                    }
+                                    app.store.upsert(e);
+                                    Anilist.push(app, e);
+                                    app.toast("Ep. " + num + " watched — progress updated"
+                                            + (Anilist.authed() ? " on AniList" : ""), "check");
+                                    return;
+                                }
+                            }
+                            app.toast("Finished Ep. " + num, "play");
+                        }
+                    });
                 }
             });
             wrap.addView(row, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, i == 0 ? 0 : 10, 0, 0));

@@ -365,6 +365,40 @@ public class Icons extends View {
         } else if ("tv".equals(n)) {
             cv.drawRoundRect(new RectF(3, 6.4f, 21, 18.6f), 2.4f, 2.4f, p);
             cv.drawLine(8.6f, 21.2f, 15.4f, 21.2f, p);
+        } else if ("mic".equals(n)) {
+            cv.drawRoundRect(new RectF(9.4f, 2.8f, 14.6f, 13), 2.6f, 2.6f, p);
+            cv.drawArc(new RectF(6, 6.5f, 18, 18.5f), 20, 140, false, p);
+            cv.drawLine(12, 18.5f, 12, 21.2f, p);
+        } else if ("skip".equals(n)) {
+            Path a = new Path();
+            a.moveTo(5.4f, 5.4f);
+            a.lineTo(14.6f, 12);
+            a.lineTo(5.4f, 18.6f);
+            a.close();
+            cv.drawPath(a, fill);
+            cv.drawLine(18.6f, 5.4f, 18.6f, 18.6f, p);
+        } else if ("volume".equals(n)) {
+            Path a = new Path();
+            a.moveTo(4, 9.4f);
+            a.lineTo(7.6f, 9.4f);
+            a.lineTo(12, 5.4f);
+            a.lineTo(12, 18.6f);
+            a.lineTo(7.6f, 14.6f);
+            a.lineTo(4, 14.6f);
+            a.close();
+            cv.drawPath(a, p);
+            cv.drawArc(new RectF(11, 8, 20, 16), -60, 120, false, p);
+        } else if ("captions".equals(n)) {
+            cv.drawRoundRect(new RectF(3, 5.4f, 21, 18.6f), 2.4f, 2.4f, p);
+            cv.drawLine(6.4f, 12, 9.4f, 12, p);
+            cv.drawLine(11.6f, 12, 17.6f, 12, p);
+            cv.drawLine(6.4f, 15.2f, 12.4f, 15.2f, p);
+            cv.drawLine(14.6f, 15.2f, 17.6f, 15.2f, p);
+        } else if ("users".equals(n)) {
+            cv.drawCircle(9, 8.4f, 3.6f, p);
+            cv.drawArc(new RectF(2.4f, 14.4f, 15.6f, 27), 200, 140, false, p);
+            cv.drawArc(new RectF(13.4f, 5.2f, 19.8f, 11.6f), -90, 180, false, p);
+            cv.drawArc(new RectF(15, 14.6f, 22.4f, 26), 250, 90, false, p);
         }
         cv.restore();
     }

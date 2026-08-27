@@ -51,10 +51,35 @@ public class MainActivity extends Activity {
         Images.init(this);
         store = new Store(this);
         Theme.load(this, store.prefs());
+        Anilist.restore(this);
 
         root = new FrameLayout(this);
         setContentView(root);
         rebuild();
+        handleAuthIntent(getIntent());
+    }
+
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        handleAuthIntent(intent);
+    }
+
+    /** anisora://anilist-auth#access_token=… (AniList OAuth redirect). */
+    private void handleAuthIntent(android.content.Intent intent) {
+        if (intent == null || intent.getData() == null) return;
+        android.net.Uri uri = intent.getData();
+        if (!"anisora".equalsIgnoreCase(uri.getScheme())) return;
+        String token = Anilist.tokenFromRedirect(uri);
+        if (token != null && token.length() > 0) {
+            Anilist.completeLogin(this, token);
+        } else {
+            toast("AniList didn't return a token — try again", "info");
+        }
+    }
+
+    public void startAniListLogin() {
+        if (!Anilist.startLogin(this)) toast("No browser available for AniList login", "info");
+        else toast("Authorize Anisora in the browser…", "info");
     }
 
     public String getFilter(String type) {
@@ -297,6 +322,7 @@ public class MainActivity extends Activity {
         else if ("search".equals(route)) v = SearchScreen.build(this, this, searchQuery);
         else v = SettingsScreen.build(this, this);
         content.addView(v, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        Ui.appear(v, 0); // route transition like AnimatePresence on the web
         refreshNav();
     }
 
@@ -338,6 +364,11 @@ public class MainActivity extends Activity {
             return;
         }
         super.onBackPressed();
+    }
+
+    /** Open a character/staff page (PersonOverlay on the web). */
+    public void openPerson(String kind, int id, String name, String image, String role) {
+        PersonScreen.open(this, this, kind, id, name, image, role);
     }
 
     /* --------------------------------- oauth demo -------------------------------- */

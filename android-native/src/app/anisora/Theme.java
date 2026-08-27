@@ -9,6 +9,7 @@ public class Theme {
 
     public static int BG0, BG1, BG2, LINE, TXT, MUT, ACC, ACC_SOFT, ACC_LINE, ACC_INK;
     public static boolean LIGHT;
+    public static boolean REDUCE_MOTION;
     public static int RADIUS; // poster radius in dp
 
     public static final int GREEN = 0xFF34D399;   // emerald-400
@@ -45,6 +46,7 @@ public class Theme {
         String theme = prefs.getString("theme", "dark");
         String accent = prefs.getString("accent", "61 180 242");
         RADIUS = prefs.getInt("posterRadius", 16);
+        REDUCE_MOTION = prefs.getBoolean("reduceMotion", false);
 
         ACC = parseAccent(accent);
         ACC_SOFT = (ACC & 0x00FFFFFF) | 0x24000000; // ~14%

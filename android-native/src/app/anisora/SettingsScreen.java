@@ -331,17 +331,23 @@ public class SettingsScreen {
                             }
                         }), true));
 
-        // sync now button
+        // sync now button (real re-sync when signed in)
         LinearLayout btn = Ui.row(c);
         btn.setGravity(Gravity.CENTER);
         btn.setBackground(Ui.ripple(Ui.rounded(Theme.ACC_SOFT, 12, Theme.ACC_LINE, 1), Theme.alpha(Theme.ACC, 60)));
         btn.setPadding(Ui.dp(16), Ui.dp(11), Ui.dp(16), Ui.dp(11));
         btn.addView(new Icons(c, "refresh", 14, Theme.ACC), Ui.lp(Ui.dp(14), Ui.dp(14)));
         btn.addView(Ui.hspace(c, 8));
-        btn.addView(Ui.text(c, "Sync now", 13, Theme.ACC, Theme.SANS_SB));
+        btn.addView(Ui.text(c, Anilist.authed() ? "Sync now" : "Sync now (sign in first)", 13, Theme.ACC, Theme.SANS_SB));
         btn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                app.toast("Library synced with AniList", "sync");
+                if (Anilist.authed()) {
+                    Api.clearCache();
+                    app.toast("Pulling your AniList library…", "sync");
+                    Anilist.syncLibrary(app, app.store.getI("anilist.userId", 0));
+                } else {
+                    app.startAniListLogin();
+                }
             }
         });
         p.addView(btn, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, 12, 0, 12));
@@ -351,7 +357,8 @@ public class SettingsScreen {
     /* --------------------------------- account -------------------------------- */
 
     private static void buildAccount(final Context c, final MainActivity app, LinearLayout col) {
-        LinearLayout p = panel(c, "user", "Account", app.store.isGuest() ? "Guest profile" : "anilist.co user");
+        boolean connected = Anilist.authed();
+        LinearLayout p = panel(c, "user", "Account", connected ? "anilist.co · connected" : "Guest profile");
 
         LinearLayout row = Ui.row(c);
         row.setPadding(0, Ui.dp(10), 0, Ui.dp(14));
@@ -361,13 +368,32 @@ public class SettingsScreen {
         row.addView(av, Ui.lpm(Ui.dp(52), Ui.dp(52), 0, 0, 12, 0));
         LinearLayout info = Ui.col(c);
         info.addView(Ui.text(c, app.store.userName(), 15.5f, Theme.TXT, Theme.SANS_BOLD));
-        TextView st = Ui.text(c, (app.store.isGuest() ? "Guest profile" : "anilist.co user") + " · "
+        TextView st = Ui.text(c, (connected ? "AniList account" : "Guest profile") + " · "
                 + app.store.countInProgress() + " in progress", 11.5f, Theme.MUT, Theme.SANS);
         st.setPadding(0, Ui.dp(3), 0, 0);
         info.addView(st);
         row.addView(info);
         p.addView(row);
         p.addView(Ui.divider(c));
+
+        if (!connected) {
+            LinearLayout connect = Ui.row(c);
+            connect.setGravity(Gravity.CENTER);
+            connect.setBackground(Ui.ripple(Ui.rounded(Theme.ACC, 12, 0, 0), 0x33000000));
+            connect.setPadding(Ui.dp(16), Ui.dp(11), Ui.dp(16), Ui.dp(11));
+            TextView al = Ui.text(c, "AL", 10, Theme.ACC_INK, Theme.SANS_BOLD);
+            al.setBackground(Ui.rounded(0x40FFFFFF, 6, 0, 0));
+            al.setPadding(Ui.dp(4), Ui.dp(1), Ui.dp(4), Ui.dp(1));
+            connect.addView(al);
+            connect.addView(Ui.hspace(c, 8));
+            connect.addView(Ui.text(c, "Connect AniList account", 13, Theme.ACC_INK, Theme.SANS_BOLD));
+            connect.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    app.startAniListLogin();
+                }
+            });
+            p.addView(connect, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, 12, 0, 4));
+        }
 
         LinearLayout out = Ui.row(c);
         out.setGravity(Gravity.CENTER);
@@ -378,6 +404,7 @@ public class SettingsScreen {
         out.addView(Ui.text(c, "Log out", 13, Theme.ROSE, Theme.SANS_SB));
         out.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
+                Anilist.logout(app);
                 app.store.logout();
                 app.toast("Signed out — see you soon", "info");
                 app.rebuild();

@@ -138,6 +138,7 @@ public class HomeScreen {
                 addRail(railsBox, c, app, "trophy", "Top rated", "Critics' darlings", d, "top", fCardW, open);
                 addRail(railsBox, c, app, "heart", "Community favourites", null, d, "loved", fCardW, open);
                 addFooter(railsBox, c);
+                for (int i = 0; i < railsBox.getChildCount(); i++) Ui.appear(railsBox.getChildAt(i), i * 55);
             }
 
             public void fail(Exception e) {

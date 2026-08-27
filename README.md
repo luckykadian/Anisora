@@ -5,12 +5,14 @@ The reference UI lives in `src/` (React + Vite + Tailwind). The Android app in `
 
 ## Android demo APK — `anisora-demo.apk`
 
-Native Android app (`android-native/`), pixel-styled after the web UI:
+Native Android app (`android-native/`), pixel-styled after the web UI, with **real AniList integration** (OAuth client id 49241, redirect `anisora://anilist-auth`): sign in from Onboarding or Settings → Account and your actual AniList library syncs in; status/progress/score changes and removals push back to anilist.co (`SaveMediaListEntry` / `DeleteMediaListEntry`). Guests keep a local-only library.
+
+Screens:
 
 - **Onboarding** — hero art, gradient headline, mock AniList OAuth flow, guest mode
 - **Home (Anime / Manga)** — greeting header, tracked library grid with status filters, Trending / Seasonal / Top / Community rails from the live AniList GraphQL API, loading skeletons, offline state
 - **Search** — debounced live AniList search with All/Anime/Manga tabs
-- **Detail** — banner + cover hero, score/popularity pills, airing countdown, status picker sheet, +1 progress logging, synopsis, info table, genres, characters, relations & recommendations rails, episode list (Watch tab)
+- **Detail** — banner + cover hero, score/popularity pills, airing countdown, status picker sheet, +1 progress logging, **0-100 rating sheet** (format-aware display), synopsis, info table, genres, **characters and staff rails** (tap any card for the full character/staff page), relations & recommendations, **demo player** with play/pause, seek, skip-intro and auto progress (Watch tab)
 - **Settings** — sections (Appearance / Content / Extensions / Playback / Sync / Account): dark/AMOLED/light themes, 8 accent colors, density, poster radius, title language, toggles, extension switches, logout
 - Design system matches `src/index.css`: bg `#0a0c11/#10141c/#181e29`, accent `rgb(61 180 242)`, bundled **Space Grotesk / Inter / JetBrains Mono**, hand-drawn lucide-style icons, rounded 2:3 posters, chips, toasts
 - Tracked library persists on-device (SharedPreferences), same seed data as the web store

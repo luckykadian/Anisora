@@ -129,6 +129,32 @@ public class Ui {
         return v;
     }
 
+    /* -------------------------------- motion -------------------------------- */
+
+    /** Press-scale feedback (whileTap in the web UI). Returns false so clicks still fire. */
+    public static void press(final View v) {
+        v.setOnTouchListener(new View.OnTouchListener() {
+            public boolean onTouch(View view, android.view.MotionEvent ev) {
+                if (Theme.REDUCE_MOTION) return false;
+                int a = ev.getAction();
+                if (a == android.view.MotionEvent.ACTION_DOWN) {
+                    view.animate().scaleX(0.965f).scaleY(0.965f).setDuration(90).start();
+                } else if (a == android.view.MotionEvent.ACTION_UP || a == android.view.MotionEvent.ACTION_CANCEL) {
+                    view.animate().scaleX(1f).scaleY(1f).setDuration(140).start();
+                }
+                return false;
+            }
+        });
+    }
+
+    /** Fade + rise entrance (initial/animate pairs in the web UI). */
+    public static void appear(View v, long delayMs) {
+        if (Theme.REDUCE_MOTION) return;
+        v.setAlpha(0f);
+        v.setTranslationY(dp(10));
+        v.animate().alpha(1f).translationY(0).setStartDelay(delayMs).setDuration(240).start();
+    }
+
     /* -------------------------------- misc -------------------------------- */
 
     public static int mix(int a, int b, float t) {

@@ -29,16 +29,29 @@ public class Api {
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static final Map<String, JSONObject> cache = new HashMap<String, JSONObject>();
 
+    /** AniList OAuth bearer token (null = guest). */
+    public static String token = null;
+
+    public static void clearCache() {
+        cache.clear();
+    }
+
     public static void gql(final String query, final JSONObject variables, final Cb cb) {
+        gql(query, variables, true, cb);
+    }
+
+    public static void gql(final String query, final JSONObject variables, final boolean useCache, final Cb cb) {
         final String key = query + variables.toString();
-        final JSONObject hit = cache.get(key);
-        if (hit != null) {
-            main.post(new Runnable() {
-                public void run() {
-                    cb.ok(hit);
-                }
-            });
-            return;
+        if (useCache) {
+            final JSONObject hit = cache.get(key);
+            if (hit != null) {
+                main.post(new Runnable() {
+                    public void run() {
+                        cb.ok(hit);
+                    }
+                });
+                return;
+            }
         }
         pool.execute(new Runnable() {
             public void run() {
@@ -52,6 +65,7 @@ public class Api {
                     c.setRequestMethod("POST");
                     c.setRequestProperty("Content-Type", "application/json");
                     c.setRequestProperty("Accept", "application/json");
+                    if (token != null) c.setRequestProperty("Authorization", "Bearer " + token);
                     c.setDoOutput(true);
                     OutputStream os = c.getOutputStream();
                     os.write(body.toString().getBytes("UTF-8"));
@@ -67,7 +81,7 @@ public class Api {
                     JSONObject json = new JSONObject(sb.toString());
                     if (json.has("errors")) throw new Exception("GraphQL error");
                     final JSONObject data = json.getJSONObject("data");
-                    cache.put(key, data);
+                    if (useCache) cache.put(key, data);
                     main.post(new Runnable() {
                         public void run() {
                             cb.ok(data);
@@ -141,7 +155,8 @@ public class Api {
                 + " streamingEpisodes { title thumbnail site }"
                 + " relations { edges { relationType(version: 2) node { id type title { romaji english native } coverImage { large color } format status averageScore } } }"
                 + " characters(sort: [ROLE, RELEVANCE, ID], perPage: 12) { edges { role node { id name { full } image { large } }"
-                + "   voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full } } } }"
+                + "   voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full } image { medium } } } }"
+                + " staff(sort: [RELEVANCE, ID], perPage: 10) { edges { role node { id name { full } image { large } } } }"
                 + " recommendations(sort: [RATING_DESC, ID], perPage: 10) { nodes { rating mediaRecommendation { id type title { romaji english native } coverImage { large color } averageScore format } } }"
                 + " } }";
         JSONObject v = new JSONObject();
@@ -150,6 +165,84 @@ public class Api {
         } catch (Exception ignored) {
         }
         gql(q, v, cb);
+    }
+
+    /* -------------------------------- persons -------------------------------- */
+
+    public static void fetchCharacter(int id, Cb cb) {
+        String q = "query ($id: Int) { Character(id: $id) { id"
+                + " name { full native alternative } image { large } description(asHtml: false)"
+                + " gender age bloodType dateOfBirth { year month day } favourites"
+                + " media(perPage: 12, sort: [POPULARITY_DESC, FAVOURITES_DESC]) {"
+                + "   nodes { id type title { romaji english native } format coverImage { large medium color } averageScore } } } }";
+        JSONObject v = new JSONObject();
+        try {
+            v.put("id", id);
+        } catch (Exception ignored) {
+        }
+        gql(q, v, cb);
+    }
+
+    public static void fetchStaff(int id, Cb cb) {
+        String q = "query ($id: Int) { Staff(id: $id) { id"
+                + " name { full native } image { large } description(asHtml: false)"
+                + " gender age homeTown languageV2 dateOfBirth { year month day } favourites"
+                + " staffMedia(perPage: 12, sort: [POPULARITY_DESC, FAVOURITES_DESC]) {"
+                + "   edges { staffRole node { id type title { romaji english native } format coverImage { large medium color } averageScore } } } } }";
+        JSONObject v = new JSONObject();
+        try {
+            v.put("id", id);
+        } catch (Exception ignored) {
+        }
+        gql(q, v, cb);
+    }
+
+    /* --------------------------- authenticated AniList --------------------------- */
+
+    public static void fetchViewer(Cb cb) {
+        gql("query { Viewer { id name avatar { medium } mediaListOptions { scoreFormat } } }",
+                new JSONObject(), false, cb);
+    }
+
+    public static void fetchLists(int userId, String type, Cb cb) {
+        String q = "query ($userId: Int, $type: MediaType) {"
+                + " MediaListCollection(userId: $userId, type: $type) { lists { name entries {"
+                + "   id status progress score(format: POINT_100)"
+                + "   media { id type title { romaji english native } coverImage { large color } episodes chapters } } } } }";
+        JSONObject v = new JSONObject();
+        try {
+            v.put("userId", userId);
+            v.put("type", type);
+        } catch (Exception ignored) {
+        }
+        gql(q, v, false, cb);
+    }
+
+    /** Create/update a list entry on AniList. scoreRaw 0-100, -1 = don't touch. */
+    public static void saveEntry(int mediaId, String status, int progress, int scoreRaw, Cb cb) {
+        StringBuilder q = new StringBuilder("mutation ($mediaId: Int, $status: MediaListStatus, $progress: Int");
+        if (scoreRaw >= 0) q.append(", $scoreRaw: Int");
+        q.append(") { SaveMediaListEntry(mediaId: $mediaId, status: $status, progress: $progress");
+        if (scoreRaw >= 0) q.append(", scoreRaw: $scoreRaw");
+        q.append(") { id status progress score(format: POINT_100) } }");
+        JSONObject v = new JSONObject();
+        try {
+            v.put("mediaId", mediaId);
+            v.put("status", status);
+            v.put("progress", progress);
+            if (scoreRaw >= 0) v.put("scoreRaw", scoreRaw);
+        } catch (Exception ignored) {
+        }
+        gql(q.toString(), v, false, cb);
+    }
+
+    public static void deleteEntry(int listId, Cb cb) {
+        JSONObject v = new JSONObject();
+        try {
+            v.put("id", listId);
+        } catch (Exception ignored) {
+        }
+        gql("mutation ($id: Int) { DeleteMediaListEntry(id: $id) { deleted } }", v, false, cb);
     }
 
     /* -------------------------------- labels -------------------------------- */

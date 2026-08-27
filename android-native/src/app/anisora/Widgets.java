@@ -173,9 +173,15 @@ public class Widgets {
     /* --------------------------------- skeleton --------------------------------- */
 
     public static View skel(Context c, float radiusDp) {
-        View v = new View(c);
+        final View v = new View(c);
         v.setBackground(Ui.rounded(Theme.alpha(Theme.LIGHT ? 0xFF0D1421 : 0xFFFFFFFF, 14), radiusDp, 0, 0));
-        v.animate().alpha(0.45f).setDuration(700).start();
+        if (!Theme.REDUCE_MOTION) {
+            android.animation.ObjectAnimator a = android.animation.ObjectAnimator.ofFloat(v, "alpha", 1f, 0.45f);
+            a.setDuration(750);
+            a.setRepeatMode(android.animation.ValueAnimator.REVERSE);
+            a.setRepeatCount(android.animation.ValueAnimator.INFINITE);
+            a.start();
+        }
         return v;
     }
 

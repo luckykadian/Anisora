@@ -119,7 +119,7 @@ public class OnboardingScreen {
         cta.addView(new Icons(c, "chev-right", 15, Theme.ACC_INK), Ui.lp(Ui.dp(15), Ui.dp(15)));
         cta.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                app.showOauthDialog();
+                app.startAniListLogin();
             }
         });
         col.addView(cta, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));

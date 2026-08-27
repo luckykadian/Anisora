@@ -97,6 +97,7 @@ public class Cards {
                 public void onClick(View v) {
                     JSONObject after = app.store.bump(m.optInt("id"));
                     if (after != null) {
+                        Anilist.push(app, after);
                         String unit = "MANGA".equals(after.optString("type")) ? "Ch." : "Ep.";
                         String tt = title.length() > 22 ? title.substring(0, 22) + "…" : title;
                         app.toast(unit + " " + after.optInt("progress") + " logged — " + tt, "check");
@@ -167,6 +168,7 @@ public class Cards {
                 onOpen.open(m);
             }
         });
+        Ui.press(root);
         return root;
     }
 

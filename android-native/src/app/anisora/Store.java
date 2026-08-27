@@ -111,6 +111,22 @@ public class Store {
         }
     }
 
+    /** Upsert without firing listeners (used when echoing server responses back). */
+    public void upsertQuiet(JSONObject e) {
+        try {
+            JSONObject lib = library();
+            lib.put(String.valueOf(e.getInt("id")), e);
+            saveLibrary(lib);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Replace the entire library (AniList sync). */
+    public void replaceLibrary(JSONObject lib) {
+        saveLibrary(lib);
+        notifyChanged();
+    }
+
     public void remove(int id) {
         JSONObject lib = library();
         lib.remove(String.valueOf(id));
