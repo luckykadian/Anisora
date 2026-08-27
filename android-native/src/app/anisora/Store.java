@@ -103,6 +103,7 @@ public class Store {
     public void upsert(JSONObject e) {
         try {
             JSONObject lib = library();
+            if (!e.has("addedAt")) e.put("addedAt", System.currentTimeMillis());
             e.put("updatedAt", System.currentTimeMillis());
             lib.put(String.valueOf(e.getInt("id")), e);
             saveLibrary(lib);

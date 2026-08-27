@@ -50,6 +50,7 @@ public class HomeScreen {
         col.addView(Ui.space(c, 6));
 
         List<JSONObject> entries = app.store.entriesOf(type);
+        sortEntries(entries, app.store.getS("librarySort", "updated"));
         int inProgress = 0;
         for (int i = 0; i < entries.size(); i++) {
             String st = entries.get(i).optString("status");
@@ -71,6 +72,19 @@ public class HomeScreen {
             LinearLayout head = Widgets.sectionHead(c, "grid",
                     "My " + (isAnime ? "Anime" : "Manga") + " List",
                     entries.size() + " tracked on this device");
+            // sort button (annotated request: sort by last updated / date added / …)
+            LinearLayout sortBtn = Ui.row(c);
+            sortBtn.setBackground(Ui.ripple(Ui.rounded(Theme.BG1, 12, Theme.LINE, 1), Theme.alpha(Theme.TXT, 26)));
+            sortBtn.setPadding(Ui.dp(11), Ui.dp(7), Ui.dp(11), Ui.dp(7));
+            sortBtn.addView(new Icons(c, "sort", 13, Theme.MUT), Ui.lp(Ui.dp(13), Ui.dp(13)));
+            sortBtn.addView(Ui.hspace(c, 6));
+            sortBtn.addView(Ui.text(c, sortLabel(app.store.getS("librarySort", "updated")), 11.5f, Theme.MUT, Theme.SANS_SB));
+            sortBtn.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    showSortSheet(c, app);
+                }
+            });
+            head.addView(sortBtn);
             col.addView(head);
 
             // status filter seg (horizontally scrollable)
@@ -162,6 +176,93 @@ public class HomeScreen {
         });
 
         return sc;
+    }
+
+    /* ------------------------------ library sort ------------------------------ */
+
+    static String sortLabel(String s) {
+        if ("added".equals(s)) return "Date added";
+        if ("title".equals(s)) return "Title";
+        if ("score".equals(s)) return "Score";
+        if ("progress".equals(s)) return "Progress";
+        return "Last updated";
+    }
+
+    static void sortEntries(List<JSONObject> list, final String mode) {
+        java.util.Collections.sort(list, new java.util.Comparator<JSONObject>() {
+            public int compare(JSONObject a, JSONObject b) {
+                if ("title".equals(mode))
+                    return a.optString("title", "").compareToIgnoreCase(b.optString("title", ""));
+                if ("score".equals(mode)) return b.optInt("score", 0) - a.optInt("score", 0);
+                if ("progress".equals(mode)) return b.optInt("progress", 0) - a.optInt("progress", 0);
+                long av, bv;
+                if ("added".equals(mode)) {
+                    av = a.optLong("addedAt", a.optLong("updatedAt"));
+                    bv = b.optLong("addedAt", b.optLong("updatedAt"));
+                } else {
+                    av = a.optLong("updatedAt");
+                    bv = b.optLong("updatedAt");
+                }
+                return bv > av ? 1 : bv < av ? -1 : 0;
+            }
+        });
+    }
+
+    private static void showSortSheet(Context c, final MainActivity app) {
+        final String[][] OPTS = {{"updated", "Last updated", "clock"}, {"added", "Date added", "calendar"},
+                {"title", "Title A-Z", "type"}, {"score", "Your score", "star"}, {"progress", "Progress", "trending"}};
+        final android.widget.FrameLayout overlay = new android.widget.FrameLayout(c);
+        overlay.setBackgroundColor(0x99000000);
+        overlay.setClickable(true);
+        LinearLayout sheet = Ui.col(c);
+        sheet.setBackground(Ui.rounded(Theme.BG1, 22, Theme.LINE, 1));
+        sheet.setPadding(Ui.dp(8), Ui.dp(12), Ui.dp(8), Ui.dp(10));
+        TextView tt = Ui.text(c, "Sort library by", 13, Theme.MUT, Theme.SANS_SB);
+        tt.setPadding(Ui.dp(14), 0, Ui.dp(14), Ui.dp(8));
+        sheet.addView(tt);
+        String cur = app.store.getS("librarySort", "updated");
+        for (int i = 0; i < OPTS.length; i++) {
+            final String id = OPTS[i][0];
+            boolean active = id.equals(cur);
+            LinearLayout item = Ui.row(c);
+            item.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(12));
+            item.setBackground(active ? Ui.rounded(Theme.ACC_SOFT, 12, 0, 0) : Ui.rounded(0x00000000, 12, 0, 0));
+            item.addView(new Icons(c, OPTS[i][2], 15, active ? Theme.ACC : Theme.MUT), Ui.lp(Ui.dp(15), Ui.dp(15)));
+            item.addView(Ui.hspace(c, 11));
+            item.addView(Ui.text(c, OPTS[i][1], 13.5f, active ? Theme.ACC : Theme.TXT, Theme.SANS_SB));
+            if (active) {
+                View spr = new View(c);
+                LinearLayout.LayoutParams wp = Ui.lp(0, 1);
+                wp.weight = 1;
+                item.addView(spr, wp);
+                item.addView(new Icons(c, "check", 14, Theme.ACC), Ui.lp(Ui.dp(14), Ui.dp(14)));
+            }
+            item.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    app.store.put("librarySort", id);
+                    ViewGroup p = (ViewGroup) overlay.getParent();
+                    if (p != null) p.removeView(overlay);
+                    app.rebuildContent();
+                }
+            });
+            sheet.addView(item, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        android.widget.FrameLayout.LayoutParams shp = new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        shp.gravity = Gravity.BOTTOM;
+        shp.setMargins(Ui.dp(12), 0, Ui.dp(12), Ui.dp(20));
+        overlay.addView(sheet, shp);
+        if (!Theme.REDUCE_MOTION) {
+            sheet.setTranslationY(Ui.dp(30));
+            sheet.animate().translationY(0).setDuration(200).start();
+        }
+        overlay.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                ViewGroup p = (ViewGroup) overlay.getParent();
+                if (p != null) p.removeView(overlay);
+            }
+        });
+        app.overlayRoot().addView(overlay, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     static int gridColumns(Context c, MainActivity app) {

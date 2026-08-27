@@ -141,6 +141,16 @@ public class Anilist {
                     if (total > 0) e.put("total", total);
                     int score = (int) Math.round(le.optDouble("score", 0));
                     if (score > 0) e.put("score", score);
+                    // media metadata so library cards render exactly like rail cards
+                    String fmt = media.optString("format", null);
+                    if (fmt != null && !"null".equals(fmt)) e.put("format", fmt);
+                    int year = media.optInt("seasonYear", 0);
+                    if (year > 0) e.put("year", year);
+                    String mstatus = media.optString("status", null);
+                    if (mstatus != null && !"null".equals(mstatus)) e.put("mstatus", mstatus);
+                    int avg = media.optInt("averageScore", 0);
+                    if (avg > 0) e.put("avg", avg);
+                    e.put("addedAt", System.currentTimeMillis());
                     e.put("updatedAt", System.currentTimeMillis());
                     lib.put(String.valueOf(media.optInt("id")), e);
                 }

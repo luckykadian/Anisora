@@ -242,7 +242,7 @@ public class SettingsScreen {
 
     /* ------------------------------- extensions ------------------------------- */
 
-    private static final String[][] EXTS = {
+    static final String[][] EXTS = {
             {"AniWatch", "EN", "1.4.2", "ANIME", "#6C5CE7", "128k"},
             {"Senpai Stream", "EN", "0.9.8", "ANIME", "#00B4D8", "86k"},
             {"Jellyfin Local", "Multi", "2.1.0", "ANIME", "#5bc0de", "12k"},

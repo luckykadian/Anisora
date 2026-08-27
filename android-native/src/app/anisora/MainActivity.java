@@ -289,7 +289,8 @@ public class MainActivity extends Activity {
             TextView label = Ui.text(this, items[i][1].toUpperCase(), 8.5f, active ? Theme.ACC : Theme.MUT, Theme.SANS_BOLD);
             label.setLetterSpacing(0.08f);
             label.setPadding(0, Ui.dp(4), 0, 0);
-            item.addView(label);
+            label.setGravity(Gravity.CENTER_HORIZONTAL); // labels default to full width — keep text centered under the icon
+            item.addView(label, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
             item.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {

@@ -129,14 +129,28 @@ public class Api {
         gql(q, v, cb);
     }
 
-    public static void search(String qstr, String type, boolean nsfw, Cb cb) {
+    public static void search(String qstr, String type, boolean nsfw, boolean adultOnly, Cb cb) {
         String q = "query ($q: String, $type: MediaType, $nsfw: Boolean) {"
                 + " Page(page: 1, perPage: 30) { media(search: $q, type: $type, isAdult: $nsfw, sort: [SEARCH_MATCH, POPULARITY_DESC]) {" + CARD + "} } }";
         JSONObject v = new JSONObject();
         try {
             v.put("q", qstr);
             if (type != null) v.put("type", type);
-            if (!nsfw) v.put("nsfw", false);
+            if (adultOnly) v.put("nsfw", true);
+            else if (!nsfw) v.put("nsfw", false);
+        } catch (Exception ignored) {
+        }
+        gql(q, v, cb);
+    }
+
+    /** Browse the AniList catalog (empty-query state on the Search page). */
+    public static void browse(String type, boolean adultOnly, Cb cb) {
+        String q = "query ($type: MediaType, $nsfw: Boolean) {"
+                + " Page(page: 1, perPage: 24) { media(type: $type, isAdult: $nsfw, sort: [TRENDING_DESC, POPULARITY_DESC]) {" + CARD + "} } }";
+        JSONObject v = new JSONObject();
+        try {
+            v.put("type", type);
+            v.put("nsfw", adultOnly);
         } catch (Exception ignored) {
         }
         gql(q, v, cb);
@@ -208,7 +222,8 @@ public class Api {
         String q = "query ($userId: Int, $type: MediaType) {"
                 + " MediaListCollection(userId: $userId, type: $type) { lists { name entries {"
                 + "   id status progress score(format: POINT_100)"
-                + "   media { id type title { romaji english native } coverImage { large color } episodes chapters } } } } }";
+                + "   media { id type title { romaji english native } coverImage { large color }"
+                + "     episodes chapters format seasonYear status averageScore } } } } }";
         JSONObject v = new JSONObject();
         try {
             v.put("userId", userId);

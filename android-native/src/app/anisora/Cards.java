@@ -240,7 +240,12 @@ public class Cards {
             if (e.has("cover")) cov.put("large", e.optString("cover"));
             if (e.has("color")) cov.put("color", e.optString("color"));
             m.put("coverImage", cov);
-            if ("MANGA".equals(e.optString("type"))) m.put("format", "MANGA");
+            // AniList-synced metadata → same card chrome as rail cards
+            if (e.has("format")) m.put("format", e.optString("format"));
+            else if ("MANGA".equals(e.optString("type"))) m.put("format", "MANGA");
+            if (e.has("year")) m.put("seasonYear", e.optInt("year"));
+            if (e.has("mstatus")) m.put("status", e.optString("mstatus"));
+            if (e.has("avg")) m.put("averageScore", e.optInt("avg"));
             return m;
         } catch (Exception ex) {
             return e;

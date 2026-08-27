@@ -399,6 +399,32 @@ public class Icons extends View {
             cv.drawArc(new RectF(2.4f, 14.4f, 15.6f, 27), 200, 140, false, p);
             cv.drawArc(new RectF(13.4f, 5.2f, 19.8f, 11.6f), -90, 180, false, p);
             cv.drawArc(new RectF(15, 14.6f, 22.4f, 26), 250, 90, false, p);
+        } else if ("sort".equals(n)) {
+            cv.drawLine(8, 4.6f, 8, 19.4f, p);
+            Path a = new Path();
+            a.moveTo(4.4f, 15.8f);
+            a.lineTo(8, 19.4f);
+            a.lineTo(11.6f, 15.8f);
+            cv.drawPath(a, p);
+            cv.drawLine(16, 19.4f, 16, 4.6f, p);
+            Path b = new Path();
+            b.moveTo(12.4f, 8.2f);
+            b.lineTo(16, 4.6f);
+            b.lineTo(19.6f, 8.2f);
+            cv.drawPath(b, p);
+        } else if ("maximize".equals(n)) {
+            Path a = new Path();
+            a.moveTo(14.4f, 4.4f);
+            a.lineTo(19.6f, 4.4f);
+            a.lineTo(19.6f, 9.6f);
+            cv.drawPath(a, p);
+            Path b = new Path();
+            b.moveTo(9.6f, 19.6f);
+            b.lineTo(4.4f, 19.6f);
+            b.lineTo(4.4f, 14.4f);
+            cv.drawPath(b, p);
+            cv.drawLine(19.2f, 4.8f, 13.8f, 10.2f, p);
+            cv.drawLine(4.8f, 19.2f, 10.2f, 13.8f, p);
         }
         cv.restore();
     }

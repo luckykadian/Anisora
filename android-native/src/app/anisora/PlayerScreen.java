@@ -65,10 +65,19 @@ public class PlayerScreen {
         tp.weight = 1;
         top.addView(tcol, tp);
 
-        LinearLayout srv = Ui.row(c);
-        srv.setBackground(Ui.rounded(0x1AFFFFFF, 999, 0x26FFFFFF, 1));
-        srv.setPadding(Ui.dp(10), Ui.dp(4), Ui.dp(10), Ui.dp(4));
-        srv.addView(Ui.text(c, "AniWatch · HD-1", 10, 0xCCFFFFFF, Theme.SANS_SB));
+        final LinearLayout srv = Ui.row(c);
+        srv.setBackground(Ui.ripple(Ui.rounded(0x1AFFFFFF, 999, 0x26FFFFFF, 1), 0x33FFFFFF));
+        srv.setPadding(Ui.dp(10), Ui.dp(4), Ui.dp(8), Ui.dp(4));
+        final TextView srvT = Ui.text(c, app.store.getS("watchExt", "AniWatch") + " · "
+                + app.store.getS("watchServer", "HD-1"), 10, 0xCCFFFFFF, Theme.SANS_SB);
+        srv.addView(srvT);
+        srv.addView(Ui.hspace(c, 4));
+        srv.addView(new Icons(c, "chev-down", 11, 0xCCFFFFFF), Ui.lp(Ui.dp(11), Ui.dp(11)));
+        srv.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                showSourceSheet(c, app, srvT);
+            }
+        });
         top.addView(srv);
         top.addView(Ui.hspace(c, 8));
 
@@ -139,6 +148,9 @@ public class PlayerScreen {
         q.setBackground(Ui.rounded(0x1AFFFFFF, 6, 0x33FFFFFF, 1));
         q.setPadding(Ui.dp(6), Ui.dp(2), Ui.dp(6), Ui.dp(2));
         ctl.addView(q);
+        ctl.addView(Ui.hspace(c, 12));
+        final Icons fsBtn = new Icons(c, "maximize", 15, 0xFFFFFFFF, 2.2f);
+        ctl.addView(fsBtn, Ui.lp(Ui.dp(15), Ui.dp(15)));
         bottom.addView(ctl);
 
         FrameLayout.LayoutParams botP = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -210,12 +222,22 @@ public class PlayerScreen {
             }
         });
 
-        // 16:9 sizing
+        // 16:9 sizing + fullscreen toggle (annotated request)
         int screenW = c.getResources().getDisplayMetrics().widthPixels;
         int cardW = screenW - Ui.dp(24);
-        FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(cardW, cardW * 9 / 16);
-        cp.gravity = Gravity.CENTER;
-        overlay.addView(card, cp);
+        final FrameLayout.LayoutParams cpNormal = new FrameLayout.LayoutParams(cardW, cardW * 9 / 16);
+        cpNormal.gravity = Gravity.CENTER;
+        final FrameLayout.LayoutParams cpFull = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        final boolean[] fs = {false};
+        overlay.addView(card, cpNormal);
+        fsBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                fs[0] = !fs[0];
+                card.setLayoutParams(fs[0] ? cpFull : cpNormal);
+                Widgets.clipRounded(card, fs[0] ? 0 : 20);
+            }
+        });
 
         app.overlayRoot().addView(overlay, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (!Theme.REDUCE_MOTION) {
@@ -225,5 +247,79 @@ public class PlayerScreen {
             card.setScaleY(0.94f);
             card.animate().scaleX(1f).scaleY(1f).setDuration(220).start();
         }
+    }
+
+    /** Change extension / server for playback (annotated request). */
+    private static void showSourceSheet(final Context c, final MainActivity app, final TextView chip) {
+        final FrameLayout overlay = new FrameLayout(c);
+        overlay.setBackgroundColor(0x99000000);
+        overlay.setClickable(true);
+        LinearLayout sheet = Ui.col(c);
+        sheet.setBackground(Ui.rounded(Theme.BG1, 22, Theme.LINE, 1));
+        sheet.setPadding(Ui.dp(14), Ui.dp(14), Ui.dp(14), Ui.dp(14));
+
+        sheet.addView(Ui.text(c, "Source", 13, Theme.MUT, Theme.SANS_SB));
+        sheet.addView(Ui.space(c, 8));
+        final Runnable updateChip = new Runnable() {
+            public void run() {
+                chip.setText(app.store.getS("watchExt", "AniWatch") + " · " + app.store.getS("watchServer", "HD-1"));
+            }
+        };
+
+        // extension rows
+        String curExt = app.store.getS("watchExt", "AniWatch");
+        for (int i = 0; i < SettingsScreen.EXTS.length; i++) {
+            if (!"ANIME".equals(SettingsScreen.EXTS[i][3])) continue;
+            final String name = SettingsScreen.EXTS[i][0];
+            boolean def = !"Jellyfin Local".equals(name);
+            if (!app.store.getB("ext." + name, def)) continue;
+            boolean active = name.equals(curExt);
+            LinearLayout item = Ui.row(c);
+            item.setPadding(Ui.dp(12), Ui.dp(11), Ui.dp(12), Ui.dp(11));
+            item.setBackground(active ? Ui.rounded(Theme.ACC_SOFT, 12, 0, 0) : Ui.rounded(0x00000000, 12, 0, 0));
+            item.addView(new Icons(c, "layers", 14, active ? Theme.ACC : Theme.MUT), Ui.lp(Ui.dp(14), Ui.dp(14)));
+            item.addView(Ui.hspace(c, 10));
+            item.addView(Ui.text(c, name, 13, active ? Theme.ACC : Theme.TXT, Theme.SANS_SB));
+            item.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    app.store.put("watchExt", name);
+                    updateChip.run();
+                    app.toast("Source switched to " + name, "check");
+                    ViewGroup p = (ViewGroup) overlay.getParent();
+                    if (p != null) p.removeView(overlay);
+                }
+            });
+            sheet.addView(item, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        sheet.addView(Ui.space(c, 10));
+        sheet.addView(Ui.text(c, "Server", 13, Theme.MUT, Theme.SANS_SB));
+        sheet.addView(Ui.space(c, 8));
+        sheet.addView(Widgets.seg(c, new String[][]{{"HD-1", "HD-1"}, {"HD-2", "HD-2"}, {"Backup", "Backup"}},
+                app.store.getS("watchServer", "HD-1"), new Widgets.OnSeg() {
+                    public void pick(String id) {
+                        app.store.put("watchServer", id);
+                        updateChip.run();
+                        app.toast("Server switched to " + id, "check");
+                        ViewGroup p = (ViewGroup) overlay.getParent();
+                        if (p != null) p.removeView(overlay);
+                    }
+                }));
+
+        FrameLayout.LayoutParams shp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        shp.gravity = Gravity.BOTTOM;
+        shp.setMargins(Ui.dp(12), 0, Ui.dp(12), Ui.dp(20));
+        overlay.addView(sheet, shp);
+        if (!Theme.REDUCE_MOTION) {
+            sheet.setTranslationY(Ui.dp(30));
+            sheet.animate().translationY(0).setDuration(200).start();
+        }
+        overlay.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                ViewGroup p = (ViewGroup) overlay.getParent();
+                if (p != null) p.removeView(overlay);
+            }
+        });
+        app.overlayRoot().addView(overlay, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 }

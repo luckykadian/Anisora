@@ -205,29 +205,29 @@ public class DetailScreen {
         col.addView(actions);
         renderActions(c, app, actions, d, title);
 
-        /* ---------- tabs: info | watch ---------- */
+        /* ---------- tabs: info | watch (seg re-rendered so the pill follows the tab) ---------- */
         final LinearLayout tabBody = Ui.col(c);
-        JSONArray eps = d.optJSONArray("streamingEpisodes");
-        final boolean hasWatch = isAnime && eps != null && eps.length() > 0;
-        LinearLayout tabsWrap = Ui.col(c);
-        tabsWrap.setPadding(Ui.dp(16), Ui.dp(18), Ui.dp(16), 0);
+        final boolean hasWatch = isAnime;
         if (hasWatch) {
+            final LinearLayout tabsWrap = Ui.col(c);
+            tabsWrap.setPadding(Ui.dp(16), Ui.dp(18), Ui.dp(16), 0);
             final String[] tab = {"info"};
             final Runnable[] render = new Runnable[1];
             render[0] = new Runnable() {
                 public void run() {
+                    tabsWrap.removeAllViews();
+                    tabsWrap.addView(Widgets.seg(c, new String[][]{{"info", "Info"}, {"play", "Watch"}}, tab[0],
+                            new Widgets.OnSeg() {
+                                public void pick(String idd) {
+                                    tab[0] = idd;
+                                    render[0].run();
+                                }
+                            }));
                     tabBody.removeAllViews();
                     if ("info".equals(tab[0])) buildInfo(c, app, tabBody, d);
                     else buildWatch(c, app, tabBody, d);
                 }
             };
-            tabsWrap.addView(Widgets.seg(c, new String[][]{{"info", "Info"}, {"play", "Watch"}}, tab[0],
-                    new Widgets.OnSeg() {
-                        public void pick(String idd) {
-                            tab[0] = idd;
-                            render[0].run();
-                        }
-                    }));
             col.addView(tabsWrap);
             col.addView(tabBody);
             render[0].run();
@@ -286,13 +286,8 @@ public class DetailScreen {
             Ui.press(plus);
             plus.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
-                    JSONObject after = app.store.bump(d.optInt("id"));
-                    if (after != null) {
-                        Anilist.push(app, after);
-                        app.toast((isAnime ? "Ep. " : "Ch. ") + after.optInt("progress") + " logged"
-                                + (Anilist.authed() ? " · synced to AniList" : ""), "check");
-                        renderActions(c, app, box, d, title);
-                    }
+                    // annotated request: open a popup to manage watched episodes (AniList-synced)
+                    showProgressSheet(c, app, d, title, box);
                 }
             });
             row.addView(plus, Ui.lpm(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 10, 0, 0, 0));
@@ -318,6 +313,140 @@ public class DetailScreen {
             row.addView(rate, Ui.lpm(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 10, 0, 0, 0));
         }
         box.addView(row);
+    }
+
+    /** Watched-episodes manager popup (annotated request) — slider + steppers, AniList-synced. */
+    private static void showProgressSheet(final Context c, final MainActivity app, final JSONObject d,
+                                          final String title, final LinearLayout actionsBox) {
+        final JSONObject e = app.store.entry(d.optInt("id"));
+        if (e == null) return;
+        final boolean isAnime = "ANIME".equals(d.optString("type"));
+        int total0 = e.optInt("total", -1);
+        if (total0 <= 0) total0 = isAnime ? d.optInt("episodes", -1) : d.optInt("chapters", -1);
+        JSONObject nae = d.optJSONObject("nextAiringEpisode");
+        int aired = nae != null ? nae.optInt("episode", 1) - 1 : 0;
+        final int max = total0 > 0 ? total0 : Math.max(Math.max(aired, e.optInt("progress") + 24), 24);
+        final boolean capped = total0 > 0;
+
+        final FrameLayout overlay = new FrameLayout(c);
+        overlay.setBackgroundColor(0x99000000);
+        overlay.setClickable(true);
+
+        LinearLayout sheet = Ui.col(c);
+        sheet.setBackground(Ui.rounded(Theme.BG1, 22, Theme.LINE, 1));
+        sheet.setPadding(Ui.dp(18), Ui.dp(18), Ui.dp(18), Ui.dp(18));
+
+        sheet.addView(Ui.text(c, isAnime ? "Watched episodes" : "Read chapters", 16, Theme.TXT, Theme.DISP_BOLD));
+        TextView sub = Ui.text(c, Anilist.authed() ? "Saves straight to your AniList entry" : "Stored on this device (guest)",
+                11, Theme.MUT, Theme.SANS);
+        sub.setPadding(0, Ui.dp(3), 0, 0);
+        sheet.addView(sub);
+        sheet.addView(Ui.space(c, 18));
+
+        final int[] val = {e.optInt("progress", 0)};
+        final TextView big = Ui.text(c, val[0] + " / " + (capped ? String.valueOf(max) : "?"), 26, Theme.ACC, Theme.MONO_BOLD);
+
+        LinearLayout stepper = Ui.row(c);
+        stepper.setGravity(Gravity.CENTER_VERTICAL);
+        final android.widget.SeekBar sb = new android.widget.SeekBar(c);
+        sb.setMax(max);
+        sb.setProgress(val[0]);
+        sb.getProgressDrawable().setColorFilter(Theme.ACC, android.graphics.PorterDuff.Mode.SRC_IN);
+        sb.getThumb().setColorFilter(Theme.ACC, android.graphics.PorterDuff.Mode.SRC_IN);
+        sb.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(android.widget.SeekBar s, int v, boolean u) {
+                val[0] = v;
+                big.setText(v + " / " + (capped ? String.valueOf(max) : "?"));
+            }
+
+            public void onStartTrackingTouch(android.widget.SeekBar s) {
+            }
+
+            public void onStopTrackingTouch(android.widget.SeekBar s) {
+            }
+        });
+
+        FrameLayout minus = stepBtn(c, "x", false);
+        ((Icons) ((FrameLayout) minus).getChildAt(0)).setIcon("chev-left");
+        minus.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                if (val[0] > 0) sb.setProgress(val[0] - 1);
+            }
+        });
+        FrameLayout plus1 = stepBtn(c, "plus", true);
+        plus1.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                if (val[0] < max) sb.setProgress(val[0] + 1);
+            }
+        });
+
+        stepper.addView(minus, Ui.lp(Ui.dp(38), Ui.dp(38)));
+        LinearLayout.LayoutParams sp2 = Ui.lpm(0, ViewGroup.LayoutParams.WRAP_CONTENT, 10, 0, 10, 0);
+        sp2.weight = 1;
+        stepper.addView(sb, sp2);
+        stepper.addView(plus1, Ui.lp(Ui.dp(38), Ui.dp(38)));
+        sheet.addView(stepper);
+
+        LinearLayout bigRow = Ui.row(c);
+        bigRow.setGravity(Gravity.CENTER);
+        bigRow.addView(big);
+        sheet.addView(bigRow, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, 10, 0, 0));
+        sheet.addView(Ui.space(c, 16));
+
+        LinearLayout save = Ui.row(c);
+        save.setGravity(Gravity.CENTER);
+        save.setBackground(Ui.ripple(Ui.rounded(Theme.ACC, 12, 0, 0), 0x33000000));
+        save.setPadding(Ui.dp(16), Ui.dp(12), Ui.dp(16), Ui.dp(12));
+        save.addView(new Icons(c, "check", 14, Theme.ACC_INK, 2.6f), Ui.lp(Ui.dp(14), Ui.dp(14)));
+        save.addView(Ui.hspace(c, 8));
+        save.addView(Ui.text(c, "Save progress", 13.5f, Theme.ACC_INK, Theme.SANS_BOLD));
+        save.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                try {
+                    e.put("progress", val[0]);
+                    String st = e.optString("status");
+                    if (capped && val[0] >= max) e.put("status", "COMPLETED");
+                    else if (val[0] > 0 && ("PLANNING".equals(st) || "PAUSED".equals(st) || "COMPLETED".equals(st)))
+                        e.put("status", "CURRENT");
+                } catch (Exception ignored) {
+                }
+                app.store.upsert(e);
+                Anilist.push(app, e);
+                app.toast((isAnime ? "Progress set to Ep. " : "Progress set to Ch. ") + val[0]
+                        + (Anilist.authed() ? " · synced to AniList" : ""), "check");
+                ViewGroup p = (ViewGroup) overlay.getParent();
+                if (p != null) p.removeView(overlay);
+                renderActions(c, app, actionsBox, d, title);
+            }
+        });
+        sheet.addView(save, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        FrameLayout.LayoutParams shp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        shp.gravity = Gravity.BOTTOM;
+        shp.setMargins(Ui.dp(12), 0, Ui.dp(12), Ui.dp(20));
+        overlay.addView(sheet, shp);
+        if (!Theme.REDUCE_MOTION) {
+            sheet.setTranslationY(Ui.dp(30));
+            sheet.animate().translationY(0).setDuration(200).start();
+        }
+        overlay.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                ViewGroup p = (ViewGroup) overlay.getParent();
+                if (p != null) p.removeView(overlay);
+            }
+        });
+        app.overlayRoot().addView(overlay, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private static FrameLayout stepBtn(Context c, String icon, boolean accent) {
+        FrameLayout b = new FrameLayout(c);
+        b.setBackground(Ui.ripple(Ui.rounded(accent ? Theme.ACC_SOFT : Theme.BG2, 12,
+                accent ? Theme.ACC_LINE : Theme.LINE, 1), Theme.alpha(Theme.TXT, 26)));
+        Icons i = new Icons(c, icon, 15, accent ? Theme.ACC : Theme.MUT, 2.4f);
+        FrameLayout.LayoutParams ip = new FrameLayout.LayoutParams(Ui.dp(15), Ui.dp(15));
+        ip.gravity = Gravity.CENTER;
+        b.addView(i, ip);
+        return b;
     }
 
     /** Format a 0-100 raw score in the user's chosen score format. */
@@ -802,41 +931,108 @@ public class DetailScreen {
     /* -------------------------------- watch tab -------------------------------- */
 
     private static void buildWatch(final Context c, final MainActivity app, LinearLayout col, final JSONObject d) {
-        final JSONArray eps = d.optJSONArray("streamingEpisodes");
+        final LinearLayout box = Ui.col(c);
+        col.addView(box);
+        renderWatch(c, app, box, d, false);
+    }
+
+    /** Enabled anime extensions from Settings (name kept in prefs "watchExt"). */
+    private static java.util.List<String> enabledExts(MainActivity app) {
+        java.util.List<String> out = new java.util.ArrayList<String>();
+        for (int i = 0; i < SettingsScreen.EXTS.length; i++) {
+            if (!"ANIME".equals(SettingsScreen.EXTS[i][3])) continue;
+            String name = SettingsScreen.EXTS[i][0];
+            boolean def = !"Jellyfin Local".equals(name) && !"Asura Scans".equals(name);
+            if (app.store.getB("ext." + name, def)) out.add(name);
+        }
+        if (out.isEmpty()) out.add("AniWatch");
+        return out;
+    }
+
+    private static void renderWatch(final Context c, final MainActivity app, final LinearLayout box,
+                                    final JSONObject d, boolean searched) {
+        box.removeAllViews();
         final String head = Api.titleOf(d, app.store.getS("titleLang", "romaji"));
+        final String ext = app.store.getS("watchExt", "AniWatch");
+
+        // episode list: streamingEpisodes when AniList has them, otherwise generated 1..N
+        JSONArray raw = d.optJSONArray("streamingEpisodes");
+        final java.util.List<String[]> eps = new java.util.ArrayList<String[]>(); // {num, title, thumb}
+        if (raw != null && raw.length() > 0) {
+            for (int i = 0; i < raw.length(); i++) {
+                JSONObject ep = raw.optJSONObject(i);
+                if (ep == null) continue;
+                String et = ep.optString("title", "Episode " + (i + 1));
+                int n = i + 1;
+                java.util.regex.Matcher mm = java.util.regex.Pattern.compile("(\\d+)").matcher(et);
+                if (mm.find()) {
+                    try {
+                        n = Integer.parseInt(mm.group(1));
+                    } catch (Exception ignored) {
+                    }
+                }
+                eps.add(new String[]{String.valueOf(n), et, ep.optString("thumbnail", null)});
+            }
+        } else {
+            int n = d.optInt("episodes", 0);
+            if (n <= 0) {
+                JSONObject nae = d.optJSONObject("nextAiringEpisode");
+                if (nae != null) n = Math.max(1, nae.optInt("episode", 1) - 1);
+            }
+            if (n <= 0) n = 12;
+            n = Math.min(n, 120);
+            for (int i = 1; i <= n; i++) eps.add(new String[]{String.valueOf(i), "Episode " + i, null});
+        }
+
         LinearLayout wrap = Ui.col(c);
         wrap.setPadding(Ui.dp(16), Ui.dp(20), Ui.dp(16), 0);
-        wrap.addView(Widgets.sectionHead(c, "play", "Episodes",
-                eps.length() + " available · AniWatch · " + app.store.getS("quality", "1080p") + " · sub"));
+
+        // head with tappable source chip (annotated request)
+        LinearLayout headRow = Widgets.sectionHead(c, "play", "Episodes",
+                eps.size() + " available · " + app.store.getS("quality", "1080p") + " · sub");
+        LinearLayout srcBtn = Ui.row(c);
+        srcBtn.setBackground(Ui.ripple(Ui.rounded(Theme.ACC_SOFT, 12, Theme.ACC_LINE, 1), Theme.alpha(Theme.ACC, 60)));
+        srcBtn.setPadding(Ui.dp(11), Ui.dp(7), Ui.dp(9), Ui.dp(7));
+        srcBtn.addView(Ui.text(c, ext, 11.5f, Theme.ACC, Theme.SANS_SB));
+        srcBtn.addView(Ui.hspace(c, 4));
+        srcBtn.addView(new Icons(c, "chev-down", 12, Theme.ACC), Ui.lp(Ui.dp(12), Ui.dp(12)));
+        srcBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                showExtensionSheet(c, app, box, d, head);
+            }
+        });
+        headRow.addView(srcBtn);
+        wrap.addView(headRow);
+
+        if (searched) {
+            LinearLayout found = Ui.row(c);
+            found.setBackground(Ui.rounded(Theme.ACC_SOFT, 10, Theme.ACC_LINE, 1));
+            found.setPadding(Ui.dp(11), Ui.dp(8), Ui.dp(11), Ui.dp(8));
+            found.addView(new Icons(c, "check", 12, Theme.ACC), Ui.lp(Ui.dp(12), Ui.dp(12)));
+            found.addView(Ui.hspace(c, 7));
+            TextView ft = Ui.oneLine(Ui.text(c, "Found \u201C" + head + "\u201D on " + ext + " — " + eps.size() + " episodes",
+                    11.5f, Theme.ACC, Theme.SANS_SB));
+            found.addView(ft);
+            wrap.addView(found, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, 0, 0, 12));
+        }
 
         boolean thumbs = app.store.getB("showThumbs", true);
-        for (int i = 0; i < eps.length(); i++) {
-            JSONObject ep = eps.optJSONObject(i);
-            if (ep == null) continue;
-            final String et = ep.optString("title", "Episode " + (i + 1));
-            final String thumb = ep.optString("thumbnail", null);
-            int n = i + 1;
-            // pull the number out of "Episode 12 - …" style titles like epNum() on web
-            java.util.regex.Matcher mm = java.util.regex.Pattern.compile("(\\d+)").matcher(et);
-            if (mm.find()) {
-                try {
-                    n = Integer.parseInt(mm.group(1));
-                } catch (Exception ignored) {
-                }
-            }
-            final int epn = n;
+        for (int i = 0; i < eps.size(); i++) {
+            final int epn = Integer.parseInt(eps.get(i)[0]);
+            final String et = eps.get(i)[1];
+            final String thumb = eps.get(i)[2];
             LinearLayout row = Ui.row(c);
             row.setBackground(Ui.ripple(Ui.rounded(Theme.BG1, 14, Theme.LINE, 1), Theme.alpha(Theme.TXT, 26)));
             row.setPadding(Ui.dp(10), Ui.dp(10), Ui.dp(12), Ui.dp(10));
 
-            if (thumbs) {
+            if (thumbs && thumb != null && !"null".equals(thumb)) {
                 FrameLayout tb = new FrameLayout(c);
                 tb.setBackground(Ui.rounded(Theme.BG2, 10, Theme.LINE, 1));
                 Widgets.clipRounded(tb, 10);
                 ImageView iv = new ImageView(c);
                 iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
                 tb.addView(iv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-                Images.load(ep.optString("thumbnail", null), iv, Ui.dp(104));
+                Images.load(thumb, iv, Ui.dp(104));
                 FrameLayout pb = new FrameLayout(c);
                 pb.setBackground(Ui.circle(0x99000000));
                 Icons pi = new Icons(c, "play", 11, 0xFFFFFFFF);
@@ -862,7 +1058,8 @@ public class DetailScreen {
             TextView t1 = Ui.text(c, et, 12.5f, Theme.TXT, Theme.SANS_SB);
             t1.setMaxLines(2);
             tc.addView(t1);
-            TextView t2 = Ui.text(c, "HD-1 · " + app.store.getS("quality", "1080p") + " · sub", 10.5f, Theme.MUT, Theme.MONO_MED);
+            TextView t2 = Ui.text(c, app.store.getS("watchServer", "HD-1") + " · "
+                    + app.store.getS("quality", "1080p") + " · sub", 10.5f, Theme.MUT, Theme.MONO_MED);
             t2.setPadding(0, Ui.dp(3), 0, 0);
             tc.addView(t2);
             LinearLayout.LayoutParams tp = Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -898,7 +1095,84 @@ public class DetailScreen {
             });
             wrap.addView(row, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, i == 0 ? 0 : 10, 0, 0));
         }
-        col.addView(wrap);
+        box.addView(wrap);
+    }
+
+    /** Extension picker: choose a source, then simulate searching this title on it. */
+    private static void showExtensionSheet(final Context c, final MainActivity app, final LinearLayout box,
+                                           final JSONObject d, final String title) {
+        final FrameLayout overlay = new FrameLayout(c);
+        overlay.setBackgroundColor(0x99000000);
+        overlay.setClickable(true);
+        LinearLayout sheet = Ui.col(c);
+        sheet.setBackground(Ui.rounded(Theme.BG1, 22, Theme.LINE, 1));
+        sheet.setPadding(Ui.dp(8), Ui.dp(12), Ui.dp(8), Ui.dp(10));
+        TextView tt = Ui.text(c, "Watch from extension", 13, Theme.MUT, Theme.SANS_SB);
+        tt.setPadding(Ui.dp(14), 0, Ui.dp(14), Ui.dp(8));
+        sheet.addView(tt);
+
+        String cur = app.store.getS("watchExt", "AniWatch");
+        java.util.List<String> exts = enabledExts(app);
+        for (int i = 0; i < exts.size(); i++) {
+            final String name = exts.get(i);
+            boolean active = name.equals(cur);
+            LinearLayout item = Ui.row(c);
+            item.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(12));
+            item.setBackground(active ? Ui.rounded(Theme.ACC_SOFT, 12, 0, 0) : Ui.rounded(0x00000000, 12, 0, 0));
+            item.addView(new Icons(c, "layers", 15, active ? Theme.ACC : Theme.MUT), Ui.lp(Ui.dp(15), Ui.dp(15)));
+            item.addView(Ui.hspace(c, 11));
+            item.addView(Ui.text(c, name, 13.5f, active ? Theme.ACC : Theme.TXT, Theme.SANS_SB));
+            if (active) {
+                View spr = new View(c);
+                LinearLayout.LayoutParams wp = Ui.lp(0, 1);
+                wp.weight = 1;
+                item.addView(spr, wp);
+                item.addView(new Icons(c, "check", 14, Theme.ACC), Ui.lp(Ui.dp(14), Ui.dp(14)));
+            }
+            item.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    app.store.put("watchExt", name);
+                    ViewGroup p = (ViewGroup) overlay.getParent();
+                    if (p != null) p.removeView(overlay);
+                    // simulate searching the title on the chosen extension
+                    box.removeAllViews();
+                    LinearLayout sk = Ui.col(c);
+                    sk.setPadding(Ui.dp(16), Ui.dp(20), Ui.dp(16), 0);
+                    LinearLayout srow = Ui.row(c);
+                    srow.addView(new Icons(c, "search", 13, Theme.ACC), Ui.lp(Ui.dp(13), Ui.dp(13)));
+                    srow.addView(Ui.hspace(c, 8));
+                    srow.addView(Ui.oneLine(Ui.text(c, "Searching \u201C" + title + "\u201D on " + name + "…",
+                            12.5f, Theme.MUT, Theme.SANS_SB)));
+                    sk.addView(srow);
+                    sk.addView(Ui.space(c, 14));
+                    for (int j = 0; j < 4; j++)
+                        sk.addView(Widgets.skel(c, 14), Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(64), 0, j == 0 ? 0 : 10, 0, 0));
+                    box.addView(sk);
+                    new android.os.Handler().postDelayed(new Runnable() {
+                        public void run() {
+                            if (box.isAttachedToWindow()) renderWatch(c, app, box, d, true);
+                        }
+                    }, 900);
+                }
+            });
+            sheet.addView(item, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        FrameLayout.LayoutParams shp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        shp.gravity = Gravity.BOTTOM;
+        shp.setMargins(Ui.dp(12), 0, Ui.dp(12), Ui.dp(20));
+        overlay.addView(sheet, shp);
+        if (!Theme.REDUCE_MOTION) {
+            sheet.setTranslationY(Ui.dp(30));
+            sheet.animate().translationY(0).setDuration(200).start();
+        }
+        overlay.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                ViewGroup p = (ViewGroup) overlay.getParent();
+                if (p != null) p.removeView(overlay);
+            }
+        });
+        app.overlayRoot().addView(overlay, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
     /* --------------------------------- helpers --------------------------------- */
