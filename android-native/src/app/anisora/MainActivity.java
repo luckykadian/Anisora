@@ -41,6 +41,9 @@ public class MainActivity extends Activity {
     private FrameLayout overlays;    // detail stack + sheets
     private LinearLayout toasts;     // toast stack
     private EditText searchInput;
+    private FrameLayout headerBtn;
+    private Icons headerIcon;
+    private View headerDot;
     private final List<int[]> detailStack = new ArrayList<int[]>();
     private final Handler handler = new Handler();
     private Runnable searchDebounce;
@@ -222,25 +225,27 @@ public class MainActivity extends Activity {
 
         bar.addView(Ui.hspace(this, 10));
 
-        // bell
-        FrameLayout bell = new FrameLayout(this);
-        bell.setBackground(Ui.ripple(Ui.rounded(Theme.BG1, 14, Theme.LINE, 1), Theme.alpha(Theme.TXT, 26)));
-        Icons bi = new Icons(this, "bell", 15, Theme.MUT);
+        // action button: bell normally, catalog-sort on the Search route
+        headerBtn = new FrameLayout(this);
+        headerBtn.setBackground(Ui.ripple(Ui.rounded(Theme.BG1, 14, Theme.LINE, 1), Theme.alpha(Theme.TXT, 26)));
+        headerIcon = new Icons(this, "bell", 15, Theme.MUT);
         FrameLayout.LayoutParams bip = new FrameLayout.LayoutParams(Ui.dp(15), Ui.dp(15));
         bip.gravity = Gravity.CENTER;
-        bell.addView(bi, bip);
-        View dot = new View(this);
-        dot.setBackground(Ui.circle(Theme.ACC));
+        headerBtn.addView(headerIcon, bip);
+        headerDot = new View(this);
+        headerDot.setBackground(Ui.circle(Theme.ACC));
         FrameLayout.LayoutParams dp2 = new FrameLayout.LayoutParams(Ui.dp(6), Ui.dp(6));
         dp2.gravity = Gravity.TOP | Gravity.RIGHT;
         dp2.setMargins(0, Ui.dp(9), Ui.dp(9), 0);
-        bell.addView(dot, dp2);
-        bell.setOnClickListener(new View.OnClickListener() {
+        headerBtn.addView(headerDot, dp2);
+        headerBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                toast("You're all caught up — no new notifications", "info");
+                if ("search".equals(route)) SearchScreen.showCatalogSortSheet(MainActivity.this);
+                else toast("You're all caught up — no new notifications", "info");
             }
         });
-        bar.addView(bell, Ui.lp(Ui.dp(38), Ui.dp(38)));
+        updateHeaderAction();
+        bar.addView(headerBtn, Ui.lp(Ui.dp(38), Ui.dp(38)));
 
         LinearLayout wrap = Ui.col(this);
         wrap.addView(bar);
@@ -314,6 +319,14 @@ public class MainActivity extends Activity {
 
     /* ------------------------------ route content ------------------------------ */
 
+    /** Header action reflects the route: sort popup on Search, bell elsewhere. */
+    private void updateHeaderAction() {
+        if (headerIcon == null) return;
+        boolean search = "search".equals(route);
+        headerIcon.setIcon(search ? "sort" : "bell");
+        if (headerDot != null) headerDot.setVisibility(search ? View.GONE : View.VISIBLE);
+    }
+
     public void rebuildContent() {
         if (content == null) return;
         content.removeAllViews();
@@ -325,6 +338,7 @@ public class MainActivity extends Activity {
         content.addView(v, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         Ui.appear(v, 0); // route transition like AnimatePresence on the web
         refreshNav();
+        updateHeaderAction();
     }
 
     /* ------------------------------ detail overlay ----------------------------- */

@@ -139,13 +139,18 @@ public class Cards {
 
         LinearLayout meta = Ui.row(c);
         meta.setPadding(Ui.dp(2), Ui.dp(4), Ui.dp(2), 0);
+        String relOverride = m.optString("_rel", null);
         String status = m.optString("status", null);
         if (status != null && !"null".equals(status)) {
             View dot = new View(c);
-            dot.setBackground(Ui.circle(Api.statusDot(status)));
+            dot.setBackground(Ui.circle(relOverride != null ? Theme.ACC : Api.statusDot(status)));
             meta.addView(dot, Ui.lpm(Ui.dp(6), Ui.dp(6), 0, 0, 6, 0));
         }
         StringBuilder ms = new StringBuilder();
+        if (relOverride != null && !"null".equals(relOverride)) {
+            // relations rail: show Prequel / Sequel / Adaptation instead of format
+            ms.append(relOverride);
+        } else {
         String fl = Api.formatLabel(m.optString("format", null));
         if (fl != null && !"null".equals(fl)) ms.append(fl);
         int year = m.optInt("seasonYear", 0);
@@ -159,6 +164,7 @@ public class Cards {
         }
         if (ms.length() == 0 && status != null && !"null".equals(status)) ms.append(Api.statusLabel(status));
         if (ms.length() == 0) ms.append("—");
+        }
         TextView mv = Ui.oneLine(Ui.text(c, ms.toString(), 10.5f, Theme.MUT, Theme.SANS_MED));
         meta.addView(mv);
         root.addView(meta);
@@ -234,7 +240,9 @@ public class Cards {
             m.put("id", e.optInt("id"));
             m.put("type", e.optString("type"));
             JSONObject t = new JSONObject();
-            t.put("romaji", e.optString("title"));
+            t.put("romaji", e.optString("titleR", e.optString("title")));
+            if (e.has("titleE")) t.put("english", e.optString("titleE"));
+            if (e.has("titleN")) t.put("native", e.optString("titleN"));
             m.put("title", t);
             JSONObject cov = new JSONObject();
             if (e.has("cover")) cov.put("large", e.optString("cover"));

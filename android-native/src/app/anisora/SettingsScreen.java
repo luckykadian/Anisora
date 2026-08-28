@@ -362,14 +362,28 @@ public class SettingsScreen {
 
         LinearLayout row = Ui.row(c);
         row.setPadding(0, Ui.dp(10), 0, Ui.dp(14));
-        TextView av = Ui.text(c, app.store.userName().substring(0, 1).toUpperCase(), 20, Theme.ACC, Theme.DISP_BOLD);
-        av.setGravity(Gravity.CENTER);
-        av.setBackground(Ui.rounded(Theme.BG2, 16, Theme.LINE, 1));
-        row.addView(av, Ui.lpm(Ui.dp(52), Ui.dp(52), 0, 0, 12, 0));
+        String avatarUrl = app.store.getS("anilist.avatar", "");
+        if (connected && avatarUrl.length() > 0) {
+            FrameLayout av = new FrameLayout(c);
+            av.setBackground(Ui.rounded(Theme.BG2, 16, Theme.LINE, 1));
+            Widgets.clipRounded(av, 16);
+            android.widget.ImageView iv = new android.widget.ImageView(c);
+            iv.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+            av.addView(iv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            Images.load(avatarUrl, iv, Ui.dp(52));
+            row.addView(av, Ui.lpm(Ui.dp(52), Ui.dp(52), 0, 0, 12, 0));
+        } else {
+            TextView av = Ui.text(c, app.store.userName().substring(0, 1).toUpperCase(), 20, Theme.ACC, Theme.DISP_BOLD);
+            av.setGravity(Gravity.CENTER);
+            av.setBackground(Ui.rounded(Theme.BG2, 16, Theme.LINE, 1));
+            row.addView(av, Ui.lpm(Ui.dp(52), Ui.dp(52), 0, 0, 12, 0));
+        }
         LinearLayout info = Ui.col(c);
         info.addView(Ui.text(c, app.store.userName(), 15.5f, Theme.TXT, Theme.SANS_BOLD));
-        TextView st = Ui.text(c, (connected ? "AniList account" : "Guest profile") + " · "
-                + app.store.countInProgress() + " in progress", 11.5f, Theme.MUT, Theme.SANS);
+        int uid = app.store.getI("anilist.userId", 0);
+        TextView st = Ui.text(c, (connected
+                ? "AniList ID " + uid + " · anilist.co"
+                : "Guest profile") + " · " + app.store.countInProgress() + " in progress", 11.5f, Theme.MUT, Theme.SANS);
         st.setPadding(0, Ui.dp(3), 0, 0);
         info.addView(st);
         row.addView(info);

@@ -205,36 +205,31 @@ public class DetailScreen {
         col.addView(actions);
         renderActions(c, app, actions, d, title);
 
-        /* ---------- tabs: info | watch (seg re-rendered so the pill follows the tab) ---------- */
+        /* ---------- tabs: info | watch/read (seg re-rendered so the pill follows) ---------- */
         final LinearLayout tabBody = Ui.col(c);
-        final boolean hasWatch = isAnime;
-        if (hasWatch) {
-            final LinearLayout tabsWrap = Ui.col(c);
-            tabsWrap.setPadding(Ui.dp(16), Ui.dp(18), Ui.dp(16), 0);
-            final String[] tab = {"info"};
-            final Runnable[] render = new Runnable[1];
-            render[0] = new Runnable() {
-                public void run() {
-                    tabsWrap.removeAllViews();
-                    tabsWrap.addView(Widgets.seg(c, new String[][]{{"info", "Info"}, {"play", "Watch"}}, tab[0],
-                            new Widgets.OnSeg() {
-                                public void pick(String idd) {
-                                    tab[0] = idd;
-                                    render[0].run();
-                                }
-                            }));
-                    tabBody.removeAllViews();
-                    if ("info".equals(tab[0])) buildInfo(c, app, tabBody, d);
-                    else buildWatch(c, app, tabBody, d);
-                }
-            };
-            col.addView(tabsWrap);
-            col.addView(tabBody);
-            render[0].run();
-        } else {
-            col.addView(tabBody);
-            buildInfo(c, app, tabBody, d);
-        }
+        final LinearLayout tabsWrap = Ui.col(c);
+        tabsWrap.setPadding(Ui.dp(16), Ui.dp(18), Ui.dp(16), 0);
+        final String[] tab = {"info"};
+        final Runnable[] render = new Runnable[1];
+        final String watchLabel = isAnime ? "Watch" : "Read";
+        render[0] = new Runnable() {
+            public void run() {
+                tabsWrap.removeAllViews();
+                tabsWrap.addView(Widgets.seg(c, new String[][]{{"info", "Info"}, {"play", watchLabel}}, tab[0],
+                        new Widgets.OnSeg() {
+                            public void pick(String idd) {
+                                tab[0] = idd;
+                                render[0].run();
+                            }
+                        }));
+                tabBody.removeAllViews();
+                if ("info".equals(tab[0])) buildInfo(c, app, tabBody, d);
+                else buildWatch(c, app, tabBody, d);
+            }
+        };
+        col.addView(tabsWrap);
+        col.addView(tabBody);
+        render[0].run();
     }
 
     /* ------------------------------ actions row ------------------------------ */
@@ -653,11 +648,23 @@ public class DetailScreen {
                 e.put("id", d.optInt("id"));
                 e.put("type", d.optString("type"));
                 e.put("title", title);
+                JSONObject mt = d.optJSONObject("title");
+                if (mt != null) {
+                    if (!mt.isNull("romaji")) e.put("titleR", mt.optString("romaji"));
+                    if (!mt.isNull("english")) e.put("titleE", mt.optString("english"));
+                    if (!mt.isNull("native")) e.put("titleN", mt.optString("native"));
+                }
                 JSONObject cov = d.optJSONObject("coverImage");
                 if (cov != null) {
                     e.put("cover", cov.optString("large", null));
                     e.put("color", cov.optString("color", null));
                 }
+                String fmt2 = d.optString("format", null);
+                if (fmt2 != null && !"null".equals(fmt2)) e.put("format", fmt2);
+                if (d.optInt("seasonYear", 0) > 0) e.put("year", d.optInt("seasonYear"));
+                String mstat = d.optString("status", null);
+                if (mstat != null && !"null".equals(mstat)) e.put("mstatus", mstat);
+                if (d.optInt("averageScore", 0) > 0) e.put("avg", d.optInt("averageScore"));
                 e.put("progress", 0);
                 int total = "MANGA".equals(d.optString("type")) ? d.optInt("chapters", -1) : d.optInt("episodes", -1);
                 if (total > 0) e.put("total", total);
@@ -872,7 +879,14 @@ public class DetailScreen {
                 for (int i = 0; i < redges.length(); i++) {
                     JSONObject edge = redges.optJSONObject(i);
                     JSONObject node = edge != null ? edge.optJSONObject("node") : null;
-                    if (node != null) media.put(node);
+                    if (node != null) {
+                        try {
+                            // show Prequel / Sequel / Adaptation under the card (annotated request)
+                            node.put("_rel", Api.relationLabel(edge.optString("relationType", "")));
+                        } catch (Exception ignored) {
+                        }
+                        media.put(node);
+                    }
                 }
                 if (media.length() > 0) {
                     LinearLayout rw = Ui.col(c);
@@ -936,27 +950,29 @@ public class DetailScreen {
         renderWatch(c, app, box, d, false);
     }
 
-    /** Enabled anime extensions from Settings (name kept in prefs "watchExt"). */
-    private static java.util.List<String> enabledExts(MainActivity app) {
+    /** Enabled extensions of a kind from Settings (choice kept in prefs). */
+    private static java.util.List<String> enabledExts(MainActivity app, String kind) {
         java.util.List<String> out = new java.util.ArrayList<String>();
         for (int i = 0; i < SettingsScreen.EXTS.length; i++) {
-            if (!"ANIME".equals(SettingsScreen.EXTS[i][3])) continue;
+            if (!kind.equals(SettingsScreen.EXTS[i][3])) continue;
             String name = SettingsScreen.EXTS[i][0];
             boolean def = !"Jellyfin Local".equals(name) && !"Asura Scans".equals(name);
             if (app.store.getB("ext." + name, def)) out.add(name);
         }
-        if (out.isEmpty()) out.add("AniWatch");
+        if (out.isEmpty()) out.add("ANIME".equals(kind) ? "AniWatch" : "MangaDex");
         return out;
     }
 
     private static void renderWatch(final Context c, final MainActivity app, final LinearLayout box,
                                     final JSONObject d, boolean searched) {
         box.removeAllViews();
+        final boolean isAnime = "ANIME".equals(d.optString("type"));
         final String head = Api.titleOf(d, app.store.getS("titleLang", "romaji"));
-        final String ext = app.store.getS("watchExt", "AniWatch");
+        final String extKey = isAnime ? "watchExt" : "readExt";
+        final String ext = app.store.getS(extKey, isAnime ? "AniWatch" : "MangaDex");
 
-        // episode list: streamingEpisodes when AniList has them, otherwise generated 1..N
-        JSONArray raw = d.optJSONArray("streamingEpisodes");
+        // items: streamingEpisodes for anime when present, otherwise generated
+        JSONArray raw = isAnime ? d.optJSONArray("streamingEpisodes") : null;
         final java.util.List<String[]> eps = new java.util.ArrayList<String[]>(); // {num, title, thumb}
         if (raw != null && raw.length() > 0) {
             for (int i = 0; i < raw.length(); i++) {
@@ -973,23 +989,31 @@ public class DetailScreen {
                 }
                 eps.add(new String[]{String.valueOf(n), et, ep.optString("thumbnail", null)});
             }
-        } else {
+        } else if (isAnime) {
             int n = d.optInt("episodes", 0);
             if (n <= 0) {
                 JSONObject nae = d.optJSONObject("nextAiringEpisode");
                 if (nae != null) n = Math.max(1, nae.optInt("episode", 1) - 1);
             }
             if (n <= 0) n = 12;
-            n = Math.min(n, 120);
+            n = Math.min(n, 100);
             for (int i = 1; i <= n; i++) eps.add(new String[]{String.valueOf(i), "Episode " + i, null});
+        } else {
+            // manga: newest chapter first
+            int n = d.optInt("chapters", 0);
+            JSONObject e0 = app.store.entry(d.optInt("id"));
+            if (n <= 0 && e0 != null) n = Math.max(e0.optInt("progress", 0) + 12, 24);
+            if (n <= 0) n = 40;
+            int from = Math.max(1, n - 99);
+            for (int i = n; i >= from; i--) eps.add(new String[]{String.valueOf(i), "Chapter " + i, null});
         }
 
         LinearLayout wrap = Ui.col(c);
         wrap.setPadding(Ui.dp(16), Ui.dp(20), Ui.dp(16), 0);
 
-        // head with tappable source chip (annotated request)
-        LinearLayout headRow = Widgets.sectionHead(c, "play", "Episodes",
-                eps.size() + " available · " + app.store.getS("quality", "1080p") + " · sub");
+        LinearLayout headRow = Widgets.sectionHead(c, isAnime ? "play" : "book",
+                isAnime ? "Episodes" : "Chapters",
+                eps.size() + " available" + (isAnime ? " · " + app.store.getS("quality", "1080p") + " · sub" : " · EN"));
         LinearLayout srcBtn = Ui.row(c);
         srcBtn.setBackground(Ui.ripple(Ui.rounded(Theme.ACC_SOFT, 12, Theme.ACC_LINE, 1), Theme.alpha(Theme.ACC, 60)));
         srcBtn.setPadding(Ui.dp(11), Ui.dp(7), Ui.dp(9), Ui.dp(7));
@@ -1010,13 +1034,13 @@ public class DetailScreen {
             found.setPadding(Ui.dp(11), Ui.dp(8), Ui.dp(11), Ui.dp(8));
             found.addView(new Icons(c, "check", 12, Theme.ACC), Ui.lp(Ui.dp(12), Ui.dp(12)));
             found.addView(Ui.hspace(c, 7));
-            TextView ft = Ui.oneLine(Ui.text(c, "Found \u201C" + head + "\u201D on " + ext + " — " + eps.size() + " episodes",
-                    11.5f, Theme.ACC, Theme.SANS_SB));
+            TextView ft = Ui.oneLine(Ui.text(c, "Found \u201C" + head + "\u201D on " + ext + " — " + eps.size()
+                    + (isAnime ? " episodes" : " chapters"), 11.5f, Theme.ACC, Theme.SANS_SB));
             found.addView(ft);
             wrap.addView(found, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, 0, 0, 12));
         }
 
-        boolean thumbs = app.store.getB("showThumbs", true);
+        boolean thumbs = isAnime && app.store.getB("showThumbs", true);
         for (int i = 0; i < eps.size(); i++) {
             final int epn = Integer.parseInt(eps.get(i)[0]);
             final String et = eps.get(i)[1];
@@ -1047,7 +1071,7 @@ public class DetailScreen {
             } else {
                 FrameLayout pb = new FrameLayout(c);
                 pb.setBackground(Ui.rounded(Theme.ACC_SOFT, 10, Theme.ACC_LINE, 1));
-                Icons pi = new Icons(c, "play", 13, Theme.ACC);
+                Icons pi = new Icons(c, isAnime ? "play" : "book", 13, Theme.ACC);
                 FrameLayout.LayoutParams pip = new FrameLayout.LayoutParams(Ui.dp(13), Ui.dp(13));
                 pip.gravity = Gravity.CENTER;
                 pb.addView(pi, pip);
@@ -1058,39 +1082,52 @@ public class DetailScreen {
             TextView t1 = Ui.text(c, et, 12.5f, Theme.TXT, Theme.SANS_SB);
             t1.setMaxLines(2);
             tc.addView(t1);
-            TextView t2 = Ui.text(c, app.store.getS("watchServer", "HD-1") + " · "
-                    + app.store.getS("quality", "1080p") + " · sub", 10.5f, Theme.MUT, Theme.MONO_MED);
+            TextView t2 = Ui.text(c, isAnime
+                    ? app.store.getS("watchServer", "HD-1") + " · " + app.store.getS("quality", "1080p") + " · sub"
+                    : ext + " · EN", 10.5f, Theme.MUT, Theme.MONO_MED);
             t2.setPadding(0, Ui.dp(3), 0, 0);
             tc.addView(t2);
             LinearLayout.LayoutParams tp = Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT);
             tp.weight = 1;
             row.addView(tc, tp);
 
+            // read/watched tick for items at or below current progress
+            JSONObject ecur = app.store.entry(d.optInt("id"));
+            if (ecur != null && epn <= ecur.optInt("progress", 0)) {
+                row.addView(new Icons(c, "check", 13, Theme.GREEN), Ui.lp(Ui.dp(13), Ui.dp(13)));
+            }
+
+            final PlayerScreen.OnDone onDone = new PlayerScreen.OnDone() {
+                public void done(int num) {
+                    if (app.store.getB("autoProgress", true)) {
+                        JSONObject e = app.store.entry(d.optInt("id"));
+                        if (e != null && num > e.optInt("progress", 0)) {
+                            try {
+                                e.put("progress", num);
+                                String st = e.optString("status");
+                                int total = e.optInt("total", -1);
+                                if (total > 0 && num >= total) e.put("status", "COMPLETED");
+                                else if ("PLANNING".equals(st) || "PAUSED".equals(st)) e.put("status", "CURRENT");
+                            } catch (Exception ignored) {
+                            }
+                            app.store.upsert(e);
+                            Anilist.push(app, e);
+                            app.toast((isAnime ? "Ep. " : "Ch. ") + num + " finished — progress updated"
+                                    + (Anilist.authed() ? " on AniList" : ""), "check");
+                            return;
+                        }
+                    }
+                    app.toast("Finished " + (isAnime ? "Ep. " : "Ch. ") + num, isAnime ? "play" : "check");
+                }
+            };
+            String coverUrl = null;
+            JSONObject cov2 = d.optJSONObject("coverImage");
+            if (cov2 != null) coverUrl = cov2.optString("large", null);
+            final String fCover = coverUrl;
             row.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
-                    PlayerScreen.open(c, app, head, epn, et, thumb, new PlayerScreen.OnDone() {
-                        public void done(int num) {
-                            if (app.store.getB("autoProgress", true)) {
-                                JSONObject e = app.store.entry(d.optInt("id"));
-                                if (e != null && num > e.optInt("progress", 0)) {
-                                    try {
-                                        e.put("progress", num);
-                                        String st = e.optString("status");
-                                        int total = e.optInt("total", -1);
-                                        if (total > 0 && num >= total) e.put("status", "COMPLETED");
-                                        else if ("PLANNING".equals(st) || "PAUSED".equals(st)) e.put("status", "CURRENT");
-                                    } catch (Exception ignored) {
-                                    }
-                                    app.store.upsert(e);
-                                    Anilist.push(app, e);
-                                    app.toast("Ep. " + num + " watched — progress updated"
-                                            + (Anilist.authed() ? " on AniList" : ""), "check");
-                                    return;
-                                }
-                            }
-                            app.toast("Finished Ep. " + num, "play");
-                        }
-                    });
+                    if (isAnime) PlayerScreen.open(c, app, head, epn, et, thumb, onDone);
+                    else ReaderScreen.open(c, app, head, epn, et, fCover, onDone);
                 }
             });
             wrap.addView(row, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, i == 0 ? 0 : 10, 0, 0));
@@ -1101,18 +1138,20 @@ public class DetailScreen {
     /** Extension picker: choose a source, then simulate searching this title on it. */
     private static void showExtensionSheet(final Context c, final MainActivity app, final LinearLayout box,
                                            final JSONObject d, final String title) {
+        final boolean isAnime = "ANIME".equals(d.optString("type"));
+        final String extKey = isAnime ? "watchExt" : "readExt";
         final FrameLayout overlay = new FrameLayout(c);
         overlay.setBackgroundColor(0x99000000);
         overlay.setClickable(true);
         LinearLayout sheet = Ui.col(c);
         sheet.setBackground(Ui.rounded(Theme.BG1, 22, Theme.LINE, 1));
         sheet.setPadding(Ui.dp(8), Ui.dp(12), Ui.dp(8), Ui.dp(10));
-        TextView tt = Ui.text(c, "Watch from extension", 13, Theme.MUT, Theme.SANS_SB);
+        TextView tt = Ui.text(c, (isAnime ? "Watch" : "Read") + " from extension", 13, Theme.MUT, Theme.SANS_SB);
         tt.setPadding(Ui.dp(14), 0, Ui.dp(14), Ui.dp(8));
         sheet.addView(tt);
 
-        String cur = app.store.getS("watchExt", "AniWatch");
-        java.util.List<String> exts = enabledExts(app);
+        String cur = app.store.getS(extKey, isAnime ? "AniWatch" : "MangaDex");
+        java.util.List<String> exts = enabledExts(app, isAnime ? "ANIME" : "MANGA");
         for (int i = 0; i < exts.size(); i++) {
             final String name = exts.get(i);
             boolean active = name.equals(cur);
@@ -1131,10 +1170,9 @@ public class DetailScreen {
             }
             item.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
-                    app.store.put("watchExt", name);
+                    app.store.put(extKey, name);
                     ViewGroup p = (ViewGroup) overlay.getParent();
                     if (p != null) p.removeView(overlay);
-                    // simulate searching the title on the chosen extension
                     box.removeAllViews();
                     LinearLayout sk = Ui.col(c);
                     sk.setPadding(Ui.dp(16), Ui.dp(20), Ui.dp(16), 0);

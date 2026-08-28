@@ -67,65 +67,12 @@ public class HomeScreen {
         col.addView(statusChip);
         col.addView(Ui.space(c, 28));
 
-        /* ---------- library ---------- */
+        /* ---------- library: sliding rail, re-rendered in place (no flash) ---------- */
         if (entries.size() > 0) {
-            LinearLayout head = Widgets.sectionHead(c, "grid",
-                    "My " + (isAnime ? "Anime" : "Manga") + " List",
-                    entries.size() + " tracked on this device");
-            // sort button (annotated request: sort by last updated / date added / …)
-            LinearLayout sortBtn = Ui.row(c);
-            sortBtn.setBackground(Ui.ripple(Ui.rounded(Theme.BG1, 12, Theme.LINE, 1), Theme.alpha(Theme.TXT, 26)));
-            sortBtn.setPadding(Ui.dp(11), Ui.dp(7), Ui.dp(11), Ui.dp(7));
-            sortBtn.addView(new Icons(c, "sort", 13, Theme.MUT), Ui.lp(Ui.dp(13), Ui.dp(13)));
-            sortBtn.addView(Ui.hspace(c, 6));
-            sortBtn.addView(Ui.text(c, sortLabel(app.store.getS("librarySort", "updated")), 11.5f, Theme.MUT, Theme.SANS_SB));
-            sortBtn.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) {
-                    showSortSheet(c, app);
-                }
-            });
-            head.addView(sortBtn);
-            col.addView(head);
-
-            // status filter seg (horizontally scrollable)
-            final String[] cur = {app.getFilter(type)};
-            HorizontalScrollView fh = new HorizontalScrollView(c);
-            fh.setHorizontalScrollBarEnabled(false);
-            String[][] all = {{"ALL", "All"}, {"CURRENT", "In Progress"}, {"COMPLETED", "Completed"},
-                    {"PLANNING", "Planning"}, {"PAUSED", "Paused"}, {"DROPPED", "Dropped"}};
-            java.util.ArrayList<String[]> avail = new java.util.ArrayList<String[]>();
-            for (int i = 0; i < all.length; i++) {
-                if ("ALL".equals(all[i][0])) {
-                    avail.add(all[i]);
-                    continue;
-                }
-                for (int j = 0; j < entries.size(); j++) {
-                    if (all[i][0].equals(entries.get(j).optString("status"))) {
-                        avail.add(all[i]);
-                        break;
-                    }
-                }
-            }
-            fh.addView(Widgets.seg(c, avail.toArray(new String[0][]), cur[0], new Widgets.OnSeg() {
-                public void pick(String id) {
-                    app.setFilter(type, id);
-                    app.rebuildContent();
-                }
-            }));
-            col.addView(fh);
-            col.addView(Ui.space(c, 14));
-
-            java.util.ArrayList<JSONObject> filtered = new java.util.ArrayList<JSONObject>();
-            for (int i = 0; i < entries.size(); i++) {
-                if ("ALL".equals(cur[0]) || cur[0].equals(entries.get(i).optString("status"))) filtered.add(entries.get(i));
-            }
-            if (filtered.size() > 0) {
-                col.addView(Cards.grid(c, app, null, filtered, gridColumns(c, app), pad, open));
-            } else {
-                col.addView(Widgets.emptyState(c, "search", "Nothing here",
-                        "No " + (isAnime ? "anime" : "manga") + " matches this filter yet."));
-            }
-            col.addView(Ui.space(c, 34));
+            final LinearLayout libBox = Ui.col(c);
+            col.addView(libBox);
+            renderLibrary(c, app, libBox, type);
+            col.addView(Ui.space(c, 30));
         }
 
         /* ---------- rails (loading skeleton first) ---------- */
@@ -178,6 +125,94 @@ public class HomeScreen {
         return sc;
     }
 
+    /** My List rail: head + sort + filters + horizontal cards. Re-renders in place. */
+    static void renderLibrary(final Context c, final MainActivity app, final LinearLayout box, final String type) {
+        box.removeAllViews();
+        final boolean isAnime = "ANIME".equals(type);
+        final Runnable rerender = new Runnable() {
+            public void run() {
+                renderLibrary(c, app, box, type);
+            }
+        };
+        List<JSONObject> entries = app.store.entriesOf(type);
+        sortEntries(entries, app.store.getS("librarySort", "updated"));
+
+        LinearLayout head = Widgets.sectionHead(c, "grid",
+                "My " + (isAnime ? "Anime" : "Manga") + " List",
+                entries.size() + " tracked · swipe to browse");
+        LinearLayout sortBtn = Ui.row(c);
+        sortBtn.setBackground(Ui.ripple(Ui.rounded(Theme.BG1, 12, Theme.LINE, 1), Theme.alpha(Theme.TXT, 26)));
+        sortBtn.setPadding(Ui.dp(11), Ui.dp(7), Ui.dp(11), Ui.dp(7));
+        sortBtn.addView(new Icons(c, "sort", 13, Theme.MUT), Ui.lp(Ui.dp(13), Ui.dp(13)));
+        sortBtn.addView(Ui.hspace(c, 6));
+        sortBtn.addView(Ui.text(c, sortLabel(app.store.getS("librarySort", "updated")), 11.5f, Theme.MUT, Theme.SANS_SB));
+        sortBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                showSortSheet(c, app, rerender);
+            }
+        });
+        head.addView(sortBtn);
+        box.addView(head);
+
+        // status filter chips
+        final String cur = app.getFilter(type);
+        HorizontalScrollView fh = new HorizontalScrollView(c);
+        fh.setHorizontalScrollBarEnabled(false);
+        String[][] all = {{"ALL", "All"}, {"CURRENT", "In Progress"}, {"COMPLETED", "Completed"},
+                {"PLANNING", "Planning"}, {"PAUSED", "Paused"}, {"DROPPED", "Dropped"}, {"REPEATING", "Rewatching"}};
+        java.util.ArrayList<String[]> avail = new java.util.ArrayList<String[]>();
+        for (int i = 0; i < all.length; i++) {
+            if ("ALL".equals(all[i][0])) {
+                avail.add(all[i]);
+                continue;
+            }
+            for (int j = 0; j < entries.size(); j++) {
+                if (all[i][0].equals(entries.get(j).optString("status"))) {
+                    avail.add(all[i]);
+                    break;
+                }
+            }
+        }
+        fh.addView(Widgets.seg(c, avail.toArray(new String[0][]), cur, new Widgets.OnSeg() {
+            public void pick(String id) {
+                app.setFilter(type, id);
+                rerender.run();
+            }
+        }));
+        box.addView(fh);
+        box.addView(Ui.space(c, 14));
+
+        java.util.ArrayList<JSONObject> filtered = new java.util.ArrayList<JSONObject>();
+        for (int i = 0; i < entries.size(); i++) {
+            if ("ALL".equals(cur) || cur.equals(entries.get(i).optString("status"))) filtered.add(entries.get(i));
+        }
+        if (filtered.isEmpty()) {
+            box.addView(Widgets.emptyState(c, "search", "Nothing here",
+                    "No " + (isAnime ? "anime" : "manga") + " matches this filter yet."));
+            return;
+        }
+
+        // sliding rail (like Trending / Top rated / Community favourites)
+        int cardW = "compact".equals(app.store.getS("density", "cozy")) ? 118 : 136;
+        HorizontalScrollView hs = new HorizontalScrollView(c);
+        hs.setHorizontalScrollBarEnabled(false);
+        LinearLayout row = new LinearLayout(c);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        Cards.OnMedia open = new Cards.OnMedia() {
+            public void open(JSONObject m) {
+                app.openDetail(m.optInt("id"), m);
+            }
+        };
+        int n = Math.min(filtered.size(), 60);
+        for (int i = 0; i < n; i++) {
+            JSONObject e = filtered.get(i);
+            LinearLayout card = Cards.mediaCard(c, app, Cards.entryToMedia(e), e, cardW, open);
+            row.addView(card, Ui.lpm(Ui.dp(cardW), ViewGroup.LayoutParams.WRAP_CONTENT, 0, 0, 14, 0));
+        }
+        hs.addView(row);
+        box.addView(hs);
+    }
+
     /* ------------------------------ library sort ------------------------------ */
 
     static String sortLabel(String s) {
@@ -208,7 +243,7 @@ public class HomeScreen {
         });
     }
 
-    private static void showSortSheet(Context c, final MainActivity app) {
+    static void showSortSheet(Context c, final MainActivity app, final Runnable onApplied) {
         final String[][] OPTS = {{"updated", "Last updated", "clock"}, {"added", "Date added", "calendar"},
                 {"title", "Title A-Z", "type"}, {"score", "Your score", "star"}, {"progress", "Progress", "trending"}};
         final android.widget.FrameLayout overlay = new android.widget.FrameLayout(c);
@@ -242,7 +277,7 @@ public class HomeScreen {
                     app.store.put("librarySort", id);
                     ViewGroup p = (ViewGroup) overlay.getParent();
                     if (p != null) p.removeView(overlay);
-                    app.rebuildContent();
+                    onApplied.run();
                 }
             });
             sheet.addView(item, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));

@@ -55,6 +55,8 @@ public class Anilist {
                 int userId = viewer.optInt("id");
                 String name = viewer.optString("name", "AniList user");
                 app.store.put("anilist.userId", userId);
+                JSONObject av = viewer.optJSONObject("avatar");
+                if (av != null) app.store.put("anilist.avatar", av.optString("medium", ""));
                 app.store.login(name, false);
                 app.toast("Connected as " + name + " — syncing library…", "check");
                 syncLibrary(app, userId);
@@ -129,6 +131,13 @@ public class Anilist {
                     e.put("listId", le.optInt("id"));
                     e.put("type", media.optString("type"));
                     e.put("title", Api.titleOf(media, "romaji"));
+                    // all title languages so the setting applies to library cards too
+                    JSONObject mt = media.optJSONObject("title");
+                    if (mt != null) {
+                        if (!mt.isNull("romaji")) e.put("titleR", mt.optString("romaji"));
+                        if (!mt.isNull("english")) e.put("titleE", mt.optString("english"));
+                        if (!mt.isNull("native")) e.put("titleN", mt.optString("native"));
+                    }
                     JSONObject cov = media.optJSONObject("coverImage");
                     if (cov != null) {
                         e.put("cover", cov.optString("large", null));
@@ -150,8 +159,11 @@ public class Anilist {
                     if (mstatus != null && !"null".equals(mstatus)) e.put("mstatus", mstatus);
                     int avg = media.optInt("averageScore", 0);
                     if (avg > 0) e.put("avg", avg);
-                    e.put("addedAt", System.currentTimeMillis());
-                    e.put("updatedAt", System.currentTimeMillis());
+                    // real AniList timestamps (seconds) so Last updated / Date added sorts work
+                    long upd = le.optLong("updatedAt", 0);
+                    long crt = le.optLong("createdAt", 0);
+                    e.put("updatedAt", upd > 0 ? upd * 1000L : System.currentTimeMillis());
+                    e.put("addedAt", crt > 0 ? crt * 1000L : (upd > 0 ? upd * 1000L : System.currentTimeMillis()));
                     lib.put(String.valueOf(media.optInt("id")), e);
                 }
             }

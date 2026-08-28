@@ -156,6 +156,23 @@ public class Api {
         gql(q, v, cb);
     }
 
+    /** Catalog sorted by an explicit AniList MediaSort (Search-page sort popup). */
+    public static void browseSorted(String type, String sort, boolean adultOnly, Cb cb) {
+        String q = "query ($type: MediaType, $nsfw: Boolean, $sort: [MediaSort]) {"
+                + " Page(page: 1, perPage: 30) { media(type: $type, isAdult: $nsfw, sort: $sort) {" + CARD + "} } }";
+        JSONObject v = new JSONObject();
+        try {
+            v.put("type", type);
+            v.put("nsfw", adultOnly);
+            org.json.JSONArray s = new org.json.JSONArray();
+            s.put(sort);
+            if (!"POPULARITY_DESC".equals(sort)) s.put("POPULARITY_DESC");
+            v.put("sort", s);
+        } catch (Exception ignored) {
+        }
+        gql(q, v, cb);
+    }
+
     public static void fetchDetail(int id, Cb cb) {
         String q = "query ($id: Int) { Media(id: $id) { id type"
                 + " title { romaji english native }"
@@ -221,7 +238,7 @@ public class Api {
     public static void fetchLists(int userId, String type, Cb cb) {
         String q = "query ($userId: Int, $type: MediaType) {"
                 + " MediaListCollection(userId: $userId, type: $type) { lists { name entries {"
-                + "   id status progress score(format: POINT_100)"
+                + "   id status progress score(format: POINT_100) updatedAt createdAt"
                 + "   media { id type title { romaji english native } coverImage { large color }"
                 + "     episodes chapters format seasonYear status averageScore } } } } }";
         JSONObject v = new JSONObject();
