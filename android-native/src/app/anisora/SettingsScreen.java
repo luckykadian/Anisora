@@ -271,6 +271,17 @@ public class SettingsScreen {
         p.addView(browse, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, 8, 0, 14));
         p.addView(Ui.divider(c));
 
+        // installer method (Aniyomi: Legacy vs Private)
+        p.addView(rowOf(c, "Installer", "System shows Android's install popup; Private keeps the APK inside Anisora",
+                Widgets.seg(c, new String[][]{{"system", "System"}, {"private", "Private"}},
+                        app.store.getS("extInstaller", "system"), new Widgets.OnSeg() {
+                            public void pick(String id) {
+                                app.store.put("extInstaller", id);
+                                app.rebuildContent();
+                            }
+                        }), true));
+        p.addView(Ui.divider(c));
+
         // repo list
         TextView rh = Ui.text(c, "Extension repos", 13.5f, Theme.TXT, Theme.SANS_SB);
         rh.setPadding(0, Ui.dp(12), 0, Ui.dp(2));

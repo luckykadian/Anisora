@@ -47,6 +47,13 @@ public class MainActivity extends Activity {
     private final List<int[]> detailStack = new ArrayList<int[]>();
     private final Handler handler = new Handler();
     private Runnable searchDebounce;
+    /** Set while the Extensions screen is open; run on resume to reflect installer results. */
+    public Runnable extScreenRefresh;
+
+    protected void onResume() {
+        super.onResume();
+        if (extScreenRefresh != null) extScreenRefresh.run();
+    }
 
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);

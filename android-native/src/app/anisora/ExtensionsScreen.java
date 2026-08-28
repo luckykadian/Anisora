@@ -54,6 +54,7 @@ public class ExtensionsScreen {
         page.addView(bar);
         back.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
+                app.extScreenRefresh = null;
                 ViewGroup p = (ViewGroup) root.getParent();
                 if (p != null) p.removeView(root);
             }
@@ -91,6 +92,8 @@ public class ExtensionsScreen {
         render[0].run();
 
         root.addView(page, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // let MainActivity.onResume refresh this screen after install/uninstall popups
+        app.extScreenRefresh = render[0];
         app.overlayRoot().addView(root, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (!Theme.REDUCE_MOTION) {
             root.setTranslationY(Ui.dp(24));
@@ -105,14 +108,36 @@ public class ExtensionsScreen {
                                       final String kind, final Runnable rerender) {
         box.removeAllViews();
 
-        /* installed section */
+        /* installed section: system packages (Aniyomi-style scan) + private registry */
         JSONObject reg = app.store.installedExts();
+        List<JSONObject> installed = app.store.systemExts(kind);
+        java.util.HashSet<String> sysPkgs = new java.util.HashSet<String>();
+        for (int i = 0; i < installed.size(); i++) {
+            String pkg = installed.get(i).optString("pkg");
+            sysPkgs.add(pkg);
+            // enrich scanned entries with repo metadata (icon, sources) if we downloaded it
+            JSONObject meta = reg.optJSONObject(pkg);
+            if (meta != null) {
+                try {
+                    if (meta.has("iconUrl")) installed.get(i).put("iconUrl", meta.optString("iconUrl"));
+                    if (meta.has("sources")) installed.get(i).put("sources", meta.optJSONArray("sources"));
+                } catch (Exception ignored) {
+                }
+            }
+        }
         JSONArray names = reg.names();
-        List<JSONObject> installed = new ArrayList<JSONObject>();
         if (names != null) {
             for (int i = 0; i < names.length(); i++) {
                 JSONObject e = reg.optJSONObject(names.optString(i));
-                if (e != null && kind.equals(e.optString("kind"))) installed.add(e);
+                if (e == null || !kind.equals(e.optString("kind"))) continue;
+                if (sysPkgs.contains(e.optString("pkg"))) continue;
+                if (e.optBoolean("system", false)) {
+                    try {
+                        e.put("pending", true); // downloaded, but user hasn't finished the popup
+                    } catch (Exception ignored) {
+                    }
+                }
+                installed.add(e);
             }
         }
         Collections.sort(installed, new Comparator<JSONObject>() {
@@ -185,6 +210,9 @@ public class ExtensionsScreen {
         // en/all languages first, then by name; dedupe by pkg (first repo wins)
         java.util.HashSet<String> seen = new java.util.HashSet<String>();
         JSONObject reg = app.store.installedExts();
+        java.util.HashSet<String> sysPkgs = new java.util.HashSet<String>();
+        List<JSONObject> sys = app.store.systemExts(null);
+        for (int i = 0; i < sys.size(); i++) sysPkgs.add(sys.get(i).optString("pkg"));
         Collections.sort(found, new Comparator<JSONObject>() {
             public int compare(JSONObject a, JSONObject b) {
                 int pa = rank(a.optString("lang")), pb = rank(b.optString("lang"));
@@ -200,7 +228,7 @@ public class ExtensionsScreen {
         for (int i = 0; i < found.size() && shown < 150; i++) {
             JSONObject e = found.get(i);
             String pkg = e.optString("pkg");
-            if (!seen.add(pkg) || reg.has(pkg)) continue;
+            if (!seen.add(pkg) || reg.has(pkg) || sysPkgs.contains(pkg)) continue;
             avail.addView(extRow(c, app, e, e.optString("_repo"), false, rerender),
                     Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, shown == 0 ? 0 : 8, 0, 0));
             shown++;
@@ -255,6 +283,21 @@ public class ExtensionsScreen {
         row.addView(mid, mp);
 
         if (isInstalled) {
+            final boolean pending = e.optBoolean("pending", false);
+            final boolean system = e.optBoolean("system", false);
+            if (pending) {
+                LinearLayout fin = Ui.row(c);
+                fin.setGravity(Gravity.CENTER);
+                fin.setBackground(Ui.ripple(Ui.rounded(Theme.ACC_SOFT, 11, Theme.ACC_LINE, 1), Theme.alpha(Theme.ACC, 60)));
+                fin.setPadding(Ui.dp(12), Ui.dp(8), Ui.dp(12), Ui.dp(8));
+                fin.addView(Ui.text(c, "Finish install", 12, Theme.ACC, Theme.SANS_BOLD));
+                fin.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View v) {
+                        launchInstaller(app, e.optString("pkg"));
+                    }
+                });
+                row.addView(fin);
+            }
             FrameLayout un = new FrameLayout(c);
             un.setBackground(Ui.ripple(Ui.rounded(0x1AFB7185, 11, 0x4DFB7185, 1), 0x33FB7185));
             Icons xi = new Icons(c, "x", 14, Theme.ROSE);
@@ -263,12 +306,24 @@ public class ExtensionsScreen {
             un.addView(xi, xp);
             un.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
-                    app.store.uninstallExt(e.optString("pkg"));
-                    app.toast(e.optString("name") + " uninstalled", "trash");
-                    rerender.run();
+                    if (system && !pending) {
+                        // real app package: hand off to Android's uninstaller popup
+                        try {
+                            android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_DELETE,
+                                    android.net.Uri.parse("package:" + e.optString("pkg")));
+                            app.startActivity(i);
+                            app.toast("Confirm the uninstall, then come back", "info");
+                        } catch (Exception ex) {
+                            app.toast("Couldn't open the uninstaller", "info");
+                        }
+                    } else {
+                        app.store.uninstallExt(e.optString("pkg"));
+                        app.toast(e.optString("name") + " removed", "trash");
+                        rerender.run();
+                    }
                 }
             });
-            row.addView(un, Ui.lp(Ui.dp(36), Ui.dp(36)));
+            row.addView(un, Ui.lpm(Ui.dp(36), Ui.dp(36), pending ? 8 : 0, 0, 0, 0));
         } else {
             final LinearLayout inst = Ui.row(c);
             inst.setGravity(Gravity.CENTER);
@@ -285,6 +340,7 @@ public class ExtensionsScreen {
                     inst.setEnabled(false);
                     String apkUrl = repoBase + "apk/" + e.optString("apk");
                     File out = new File(new File(c.getFilesDir(), "extensions"), e.optString("pkg") + ".apk");
+                    final boolean systemInstall = "system".equals(app.store.getS("extInstaller", "system"));
                     Net.download(apkUrl, out, new Net.FileCb() {
                         public void ok(File f) {
                             try {
@@ -299,11 +355,18 @@ public class ExtensionsScreen {
                                 meta.put("apkSize", f.length());
                                 meta.put("iconUrl", repoBase + "icon/" + e.optString("pkg") + ".png");
                                 if (e.optJSONArray("sources") != null) meta.put("sources", e.optJSONArray("sources"));
+                                meta.put("system", systemInstall);
                                 app.store.installExt(meta);
                             } catch (Exception ignored) {
                             }
-                            app.toast(fName + " v" + e.optString("version") + " installed ("
-                                    + (f.length() / 1024) + " KB)", "check");
+                            if (systemInstall) {
+                                // Aniyomi "Legacy" installer: Android shows the install popup
+                                launchInstaller(app, e.optString("pkg"));
+                                app.toast("Confirm the install in Android's popup", "info");
+                            } else {
+                                app.toast(fName + " v" + e.optString("version") + " installed privately ("
+                                        + (f.length() / 1024) + " KB)", "check");
+                            }
                             rerender.run();
                         }
 
@@ -318,6 +381,19 @@ public class ExtensionsScreen {
             row.addView(inst);
         }
         return row;
+    }
+
+    /** Hand the downloaded APK to Android's package installer (content:// via ApkProvider). */
+    static void launchInstaller(MainActivity app, String pkg) {
+        try {
+            android.net.Uri uri = android.net.Uri.parse("content://app.anisora.apkprovider/" + pkg + ".apk");
+            android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_VIEW);
+            i.setDataAndType(uri, "application/vnd.android.package-archive");
+            i.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            app.startActivity(i);
+        } catch (Exception ex) {
+            app.toast("Couldn't open the package installer", "info");
+        }
     }
 
     /* ------------------------------ add-repo sheet ------------------------------ */

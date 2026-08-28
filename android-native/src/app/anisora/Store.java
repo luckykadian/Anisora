@@ -14,9 +14,11 @@ import java.util.List;
 public class Store {
 
     private final SharedPreferences prefs;
+    private final Context ctx;
     private final List<Runnable> listeners = new ArrayList<Runnable>();
 
     public Store(Context ctx) {
+        this.ctx = ctx;
         prefs = ctx.getSharedPreferences("anisora", Context.MODE_PRIVATE);
     }
 
@@ -299,22 +301,71 @@ public class Store {
         }
     }
 
-    /** Names of installed extensions for a kind (ANIME/MANGA). */
+    /** Names of installed extensions for a kind (ANIME/MANGA), private + system. */
     public List<String> extNames(String kind) {
         List<String> out = new ArrayList<String>();
         JSONObject reg = installedExts();
         JSONArray names = reg.names();
-        if (names == null) return out;
-        for (int i = 0; i < names.length(); i++) {
-            JSONObject e = reg.optJSONObject(names.optString(i));
-            if (e != null && kind.equals(e.optString("kind"))) out.add(e.optString("name"));
+        if (names != null) {
+            for (int i = 0; i < names.length(); i++) {
+                JSONObject e = reg.optJSONObject(names.optString(i));
+                if (e != null && kind.equals(e.optString("kind"))) out.add(e.optString("name"));
+            }
+        }
+        List<JSONObject> sys = systemExts(kind);
+        for (int i = 0; i < sys.size(); i++) {
+            String n = sys.get(i).optString("name");
+            if (!out.contains(n)) out.add(n);
         }
         Collections.sort(out);
         return out;
     }
 
+    /**
+     * Real Aniyomi extension discovery: scan installed packages for the
+     * tachiyomi.animeextension.class / tachiyomi.extension.class meta-data
+     * (identical to AnimeExtensionLoader / MangaExtensionLoader).
+     */
+    public List<JSONObject> systemExts(String kind) {
+        List<JSONObject> out = new ArrayList<JSONObject>();
+        try {
+            android.content.pm.PackageManager pm = ctx.getPackageManager();
+            List<android.content.pm.PackageInfo> pkgs =
+                    pm.getInstalledPackages(android.content.pm.PackageManager.GET_META_DATA);
+            for (int i = 0; i < pkgs.size(); i++) {
+                android.content.pm.PackageInfo pi = pkgs.get(i);
+                if (pi.applicationInfo == null || pi.applicationInfo.metaData == null) continue;
+                android.os.Bundle md = pi.applicationInfo.metaData;
+                boolean anime = md.containsKey("tachiyomi.animeextension.class");
+                boolean manga = md.containsKey("tachiyomi.extension.class");
+                if (!anime && !manga) continue;
+                String k = anime ? "ANIME" : "MANGA";
+                if (kind != null && !kind.equals(k)) continue;
+                JSONObject e = new JSONObject();
+                e.put("pkg", pi.packageName);
+                String label = String.valueOf(pi.applicationInfo.loadLabel(pm));
+                e.put("name", label.replace("Aniyomi: ", "").replace("Tachiyomi: ", ""));
+                e.put("version", pi.versionName == null ? "?" : pi.versionName);
+                e.put("kind", k);
+                e.put("system", true);
+                out.add(e);
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    public boolean isSystemInstalled(String pkg) {
+        try {
+            ctx.getPackageManager().getPackageInfo(pkg, 0);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public int extCount() {
         JSONArray n = installedExts().names();
-        return n == null ? 0 : n.length();
+        return (n == null ? 0 : n.length()) + systemExts(null).size();
     }
 }
