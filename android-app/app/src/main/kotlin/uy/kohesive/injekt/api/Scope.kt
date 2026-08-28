@@ -58,7 +58,7 @@ open class InjektScope(val registrar: InjektRegistrar) : InjektRegistrar by regi
     }
 }
 
-abstract class LocalScoped(protected val localScope: InjektScope) {
+abstract class LocalScoped(@PublishedApi internal val localScope: InjektScope) {
     inline fun <reified T: Any> injectLazy(): Lazy<T> {
         return localScope.injectLazy()
     }

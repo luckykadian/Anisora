@@ -531,7 +531,7 @@ abstract class AnimeHttpSource : AnimeCatalogueSource {
      * @return the image bitmap
      */
     open suspend fun getImageTile(url: String): Bitmap? {
-        return client.newCall(GET(url, headers)).execute().body.byteStream().use {
+        return client.newCall(GET(url, headers)).execute().body!!.byteStream().use {
             BitmapFactory.decodeStream(it)
         }
     }

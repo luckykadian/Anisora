@@ -50,7 +50,7 @@ object ExtPlayer {
 
         val top = LinearLayout(ctx)
         top.orientation = LinearLayout.HORIZONTAL
-        top.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(12), Ui.dp(12))
+        top.setPadding(Ui.dp(14f), Ui.dp(12f), Ui.dp(12f), Ui.dp(12f))
         top.setBackgroundColor(0x99000000.toInt())
         val t = TextView(ctx)
         t.text = title

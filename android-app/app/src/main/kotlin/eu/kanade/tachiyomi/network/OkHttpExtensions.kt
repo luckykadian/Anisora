@@ -77,7 +77,7 @@ fun OkHttpClient.newCachelessCallWithProgress(request: Request, listener: Progre
         .addNetworkInterceptor { chain ->
             val originalResponse = chain.proceed(chain.request())
             originalResponse.newBuilder()
-                .body(ProgressResponseBody(originalResponse.body, listener))
+                .body(ProgressResponseBody(originalResponse.body!!, listener))
                 .build()
         }
         .build()
