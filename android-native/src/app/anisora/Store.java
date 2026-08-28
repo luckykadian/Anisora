@@ -221,4 +221,100 @@ public class Store {
         seed(lib, 656, "MANGA", "Vagabond", "PLANNING", 0, 327, "#606C38", 0);
         saveLibrary(lib);
     }
+    /* ------------------------ extension repos & registry ------------------------ */
+
+    public static final String[] SUGGESTED_REPOS = {
+            "https://kohiden.xyz/Kohi-den/extensions/raw/branch/main/index.min.json",
+            "https://raw.githubusercontent.com/keiyoushi/extensions/repo/index.min.json",
+            "https://raw.githubusercontent.com/almightyhak/aniyomi-anime-repo/main/index.min.json",
+            "https://raw.githubusercontent.com/yuzono/anime-repo/repo/index.min.json",
+    };
+
+    /** Repo URL list (index.min.json links, Aniyomi-compatible). Seeds defaults once. */
+    public JSONArray repos() {
+        try {
+            String raw = prefs.getString("ext.repos", null);
+            if (raw == null) {
+                JSONArray def = new JSONArray();
+                def.put(SUGGESTED_REPOS[0]);
+                def.put(SUGGESTED_REPOS[1]);
+                prefs.edit().putString("ext.repos", def.toString()).apply();
+                return def;
+            }
+            return new JSONArray(raw);
+        } catch (Exception e) {
+            return new JSONArray();
+        }
+    }
+
+    public void addRepo(String url) {
+        try {
+            JSONArray r = repos();
+            for (int i = 0; i < r.length(); i++) if (url.equals(r.optString(i))) return;
+            r.put(url);
+            prefs.edit().putString("ext.repos", r.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    public void removeRepo(String url) {
+        try {
+            JSONArray r = repos();
+            JSONArray out = new JSONArray();
+            for (int i = 0; i < r.length(); i++) if (!url.equals(r.optString(i))) out.put(r.optString(i));
+            prefs.edit().putString("ext.repos", out.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Installed extension registry: pkg -> {name,version,lang,nsfw,kind,apkPath,iconUrl,sources[]}. */
+    public JSONObject installedExts() {
+        try {
+            return new JSONObject(prefs.getString("ext.installed", "{}"));
+        } catch (Exception e) {
+            return new JSONObject();
+        }
+    }
+
+    public void installExt(JSONObject meta) {
+        try {
+            JSONObject reg = installedExts();
+            reg.put(meta.getString("pkg"), meta);
+            prefs.edit().putString("ext.installed", reg.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    public void uninstallExt(String pkg) {
+        try {
+            JSONObject reg = installedExts();
+            JSONObject e = reg.optJSONObject(pkg);
+            if (e != null) {
+                String path = e.optString("apkPath", null);
+                if (path != null) new java.io.File(path).delete();
+            }
+            reg.remove(pkg);
+            prefs.edit().putString("ext.installed", reg.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Names of installed extensions for a kind (ANIME/MANGA). */
+    public List<String> extNames(String kind) {
+        List<String> out = new ArrayList<String>();
+        JSONObject reg = installedExts();
+        JSONArray names = reg.names();
+        if (names == null) return out;
+        for (int i = 0; i < names.length(); i++) {
+            JSONObject e = reg.optJSONObject(names.optString(i));
+            if (e != null && kind.equals(e.optString("kind"))) out.add(e.optString("name"));
+        }
+        Collections.sort(out);
+        return out;
+    }
+
+    public int extCount() {
+        JSONArray n = installedExts().names();
+        return n == null ? 0 : n.length();
+    }
 }

@@ -251,43 +251,82 @@ public class SettingsScreen {
     };
 
     private static void buildExtensions(final Context c, final MainActivity app, LinearLayout col) {
-        LinearLayout p = panel(c, "layers", "Extensions", "Streaming & reading sources for the Watch tab");
-        for (int i = 0; i < EXTS.length; i++) {
-            final String name = EXTS[i][0];
-            LinearLayout row = Ui.row(c);
-            row.setPadding(0, Ui.dp(11), 0, Ui.dp(11));
+        LinearLayout p = panel(c, "layers", "Extensions", "Aniyomi-compatible repos & sources");
 
-            TextView av = Ui.text(c, name.substring(0, 1), 15, 0xFFFFFFFF, Theme.DISP_BOLD);
-            av.setGravity(Gravity.CENTER);
-            int color = 0xFF6C5CE7;
-            try {
-                color = (int) Long.parseLong(EXTS[i][4].substring(1), 16) | 0xFF000000;
-            } catch (Exception ignored) {
+        // browse & install
+        LinearLayout browse = Ui.row(c);
+        browse.setGravity(Gravity.CENTER);
+        browse.setBackground(Ui.ripple(Ui.rounded(Theme.ACC, 12, 0, 0), 0x33000000));
+        browse.setPadding(Ui.dp(16), Ui.dp(12), Ui.dp(16), Ui.dp(12));
+        browse.addView(new Icons(c, "download", 14, Theme.ACC_INK), Ui.lp(Ui.dp(14), Ui.dp(14)));
+        browse.addView(Ui.hspace(c, 8));
+        int count = app.store.extCount();
+        browse.addView(Ui.text(c, "Browse extensions" + (count > 0 ? " · " + count + " installed" : ""),
+                13.5f, Theme.ACC_INK, Theme.SANS_BOLD));
+        browse.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                ExtensionsScreen.open(c, app);
             }
-            av.setBackground(Ui.rounded(color, 12, 0, 0));
-            row.addView(av, Ui.lpm(Ui.dp(40), Ui.dp(40), 0, 0, 12, 0));
+        });
+        p.addView(browse, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, 8, 0, 14));
+        p.addView(Ui.divider(c));
 
-            LinearLayout mid = Ui.col(c);
-            mid.addView(Ui.text(c, name, 13.5f, Theme.TXT, Theme.SANS_SB));
-            TextView subT = Ui.text(c, EXTS[i][1] + " · v" + EXTS[i][2] + " · " + EXTS[i][5] + " installs · "
-                    + ("ANIME".equals(EXTS[i][3]) ? "Anime" : "Manga"), 11, Theme.MUT, Theme.SANS);
-            subT.setPadding(0, Ui.dp(3), 0, 0);
-            mid.addView(subT);
-            LinearLayout.LayoutParams mp = Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT);
-            mp.weight = 1;
-            row.addView(mid, mp);
+        // repo list
+        TextView rh = Ui.text(c, "Extension repos", 13.5f, Theme.TXT, Theme.SANS_SB);
+        rh.setPadding(0, Ui.dp(12), 0, Ui.dp(2));
+        p.addView(rh);
+        TextView rs = Ui.text(c, "index.min.json URLs — the same format Aniyomi uses", 11, Theme.MUT, Theme.SANS);
+        p.addView(rs);
+        p.addView(Ui.space(c, 10));
 
-            final String key = "ext." + name;
-            boolean def = !"Jellyfin Local".equals(name) && !"Asura Scans".equals(name);
-            row.addView(Widgets.toggle(c, app.store.getB(key, def), new Widgets.OnToggle() {
-                public void toggled(boolean on) {
-                    app.store.put(key, on);
-                    app.toast(name + (on ? " enabled" : " disabled"), on ? "check" : "info");
+        org.json.JSONArray repos = app.store.repos();
+        for (int i = 0; i < repos.length(); i++) {
+            final String url = repos.optString(i);
+            LinearLayout row = Ui.row(c);
+            row.setBackground(Ui.rounded(Theme.BG2, 11, Theme.LINE, 1));
+            row.setPadding(Ui.dp(11), Ui.dp(9), Ui.dp(7), Ui.dp(9));
+            row.addView(new Icons(c, "layers", 13, Theme.ACC), Ui.lp(Ui.dp(13), Ui.dp(13)));
+            row.addView(Ui.hspace(c, 9));
+            String shortUrl = url.replace("https://", "").replace("http://", "");
+            if (shortUrl.length() > 46) shortUrl = shortUrl.substring(0, 46) + "…";
+            TextView ut = Ui.oneLine(Ui.text(c, shortUrl, 10.5f, Theme.MUT, Theme.MONO_MED));
+            LinearLayout.LayoutParams up = Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT);
+            up.weight = 1;
+            row.addView(ut, up);
+            FrameLayout rm = new FrameLayout(c);
+            rm.setBackground(Ui.ripple(Ui.rounded(0x00000000, 9, 0, 0), 0x33FB7185));
+            Icons xi = new Icons(c, "x", 12, Theme.ROSE);
+            FrameLayout.LayoutParams xp = new FrameLayout.LayoutParams(Ui.dp(12), Ui.dp(12));
+            xp.gravity = Gravity.CENTER;
+            rm.addView(xi, xp);
+            rm.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    app.store.removeRepo(url);
+                    app.toast("Repo removed", "trash");
+                    app.rebuildContent();
                 }
-            }));
-            p.addView(row);
-            if (i < EXTS.length - 1) p.addView(Ui.divider(c));
+            });
+            row.addView(rm, Ui.lp(Ui.dp(28), Ui.dp(28)));
+            p.addView(row, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, i == 0 ? 0 : 6, 0, 0));
         }
+
+        LinearLayout add = Ui.row(c);
+        add.setGravity(Gravity.CENTER);
+        add.setBackground(Ui.ripple(Ui.rounded(Theme.ACC_SOFT, 11, Theme.ACC_LINE, 1), Theme.alpha(Theme.ACC, 60)));
+        add.setPadding(Ui.dp(14), Ui.dp(10), Ui.dp(14), Ui.dp(10));
+        add.addView(new Icons(c, "plus", 13, Theme.ACC, 2.4f), Ui.lp(Ui.dp(13), Ui.dp(13)));
+        add.addView(Ui.hspace(c, 7));
+        add.addView(Ui.text(c, "Add repo", 12.5f, Theme.ACC, Theme.SANS_SB));
+        add.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                ExtensionsScreen.showAddRepoSheet(app, new Runnable() {
+                    public void run() {
+                        app.rebuildContent();
+                    }
+                });
+            }
+        });
+        p.addView(add, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, 10, 0, 12));
         col.addView(p);
     }
 

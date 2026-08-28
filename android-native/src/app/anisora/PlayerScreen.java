@@ -266,13 +266,12 @@ public class PlayerScreen {
             }
         };
 
-        // extension rows
+        // extension rows (installed Aniyomi extensions)
         String curExt = app.store.getS("watchExt", "AniWatch");
-        for (int i = 0; i < SettingsScreen.EXTS.length; i++) {
-            if (!"ANIME".equals(SettingsScreen.EXTS[i][3])) continue;
-            final String name = SettingsScreen.EXTS[i][0];
-            boolean def = !"Jellyfin Local".equals(name);
-            if (!app.store.getB("ext." + name, def)) continue;
+        java.util.List<String> extList = app.store.extNames("ANIME");
+        if (extList.isEmpty()) extList.add("AniWatch (demo)");
+        for (int i = 0; i < extList.size(); i++) {
+            final String name = extList.get(i);
             boolean active = name.equals(curExt);
             LinearLayout item = Ui.row(c);
             item.setPadding(Ui.dp(12), Ui.dp(11), Ui.dp(12), Ui.dp(11));

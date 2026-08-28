@@ -950,16 +950,10 @@ public class DetailScreen {
         renderWatch(c, app, box, d, false);
     }
 
-    /** Enabled extensions of a kind from Settings (choice kept in prefs). */
+    /** Installed Aniyomi extensions of a kind (demo names when none installed). */
     private static java.util.List<String> enabledExts(MainActivity app, String kind) {
-        java.util.List<String> out = new java.util.ArrayList<String>();
-        for (int i = 0; i < SettingsScreen.EXTS.length; i++) {
-            if (!kind.equals(SettingsScreen.EXTS[i][3])) continue;
-            String name = SettingsScreen.EXTS[i][0];
-            boolean def = !"Jellyfin Local".equals(name) && !"Asura Scans".equals(name);
-            if (app.store.getB("ext." + name, def)) out.add(name);
-        }
-        if (out.isEmpty()) out.add("ANIME".equals(kind) ? "AniWatch" : "MangaDex");
+        java.util.List<String> out = app.store.extNames(kind);
+        if (out.isEmpty()) out.add("ANIME".equals(kind) ? "AniWatch (demo)" : "MangaDex (demo)");
         return out;
     }
 
