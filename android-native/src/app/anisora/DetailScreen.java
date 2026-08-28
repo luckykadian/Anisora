@@ -947,7 +947,7 @@ public class DetailScreen {
     private static void buildWatch(final Context c, final MainActivity app, LinearLayout col, final JSONObject d) {
         final LinearLayout box = Ui.col(c);
         col.addView(box);
-        renderWatch(c, app, box, d, false);
+        WatchPane.render(c, app, box, d);
     }
 
     /** Installed Aniyomi extensions of a kind (demo names when none installed). */

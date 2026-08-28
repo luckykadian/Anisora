@@ -2,5 +2,10 @@ node_modules/
 dist/
 android/out/
 android-native/out/
+android-app/build/
+android-app/app/build/
+android-app/.gradle/
+android-app/local.properties
 anisora-webview.apk
 *.log
+.idea/

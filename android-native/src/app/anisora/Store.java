@@ -304,6 +304,15 @@ public class Store {
     /** Names of installed extensions for a kind (ANIME/MANGA), private + system. */
     public List<String> extNames(String kind) {
         List<String> out = new ArrayList<String>();
+        try {
+            java.util.ArrayList<ExtBridge.SourceRef> live = "ANIME".equals(kind)
+                    ? ExtBridge.animeSources() : ExtBridge.mangaSources();
+            for (int i = 0; i < live.size(); i++) {
+                String n = live.get(i).name;
+                if (n != null && !out.contains(n)) out.add(n);
+            }
+        } catch (Throwable ignored) {
+        }
         JSONObject reg = installedExts();
         JSONArray names = reg.names();
         if (names != null) {
@@ -367,5 +376,44 @@ public class Store {
     public int extCount() {
         JSONArray n = installedExts().names();
         return (n == null ? 0 : n.length()) + systemExts(null).size();
+    }
+
+    /* ------------------------ title ↔ extension bindings ------------------------ */
+
+    public JSONObject extBinds() {
+        try {
+            return new JSONObject(prefs.getString("ext.binds", "{}"));
+        } catch (Exception e) {
+            return new JSONObject();
+        }
+    }
+
+    private String bindKey(String kind, int mediaId, long sourceId) {
+        return kind + ":" + mediaId + ":" + sourceId;
+    }
+
+    /** Bound extension title for this AniList id + source, or null. */
+    public JSONObject getBind(String kind, int mediaId, long sourceId) {
+        return extBinds().optJSONObject(bindKey(kind, mediaId, sourceId));
+    }
+
+    public void setBind(String kind, int mediaId, long sourceId, String url, String title, String thumb) {
+        try {
+            JSONObject all = extBinds();
+            JSONObject b = new JSONObject();
+            b.put("url", url);
+            b.put("title", title);
+            if (thumb != null) b.put("thumb", thumb);
+            b.put("sourceId", sourceId);
+            all.put(bindKey(kind, mediaId, sourceId), b);
+            prefs.edit().putString("ext.binds", all.toString()).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    public void clearBind(String kind, int mediaId, long sourceId) {
+        JSONObject all = extBinds();
+        all.remove(bindKey(kind, mediaId, sourceId));
+        prefs.edit().putString("ext.binds", all.toString()).apply();
     }
 }
