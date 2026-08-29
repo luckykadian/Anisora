@@ -359,6 +359,7 @@ public class ExtensionsScreen {
                                 app.store.installExt(meta);
                             } catch (Exception ignored) {
                             }
+                            try { ExtBridge.reload(); } catch (Throwable ignored) {}
                             if (systemInstall) {
                                 // Aniyomi "Legacy" installer: Android shows the install popup
                                 launchInstaller(app, e.optString("pkg"));

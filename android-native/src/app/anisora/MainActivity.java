@@ -62,6 +62,7 @@ public class MainActivity extends Activity {
         store = new Store(this);
         Theme.load(this, store.prefs());
         Anilist.restore(this);
+        try { ExtBridge.reload(); } catch (Throwable ignored) {}
 
         root = new FrameLayout(this);
         setContentView(root);

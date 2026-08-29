@@ -251,7 +251,7 @@ public class SettingsScreen {
     };
 
     private static void buildExtensions(final Context c, final MainActivity app, LinearLayout col) {
-        LinearLayout p = panel(c, "layers", "Extensions", "Aniyomi-compatible repos & sources");
+        LinearLayout p = panel(c, "layers", "Extensions", "Aniyomi-compatible repos, sources & per-source settings");
 
         // browse & install
         LinearLayout browse = Ui.row(c);
