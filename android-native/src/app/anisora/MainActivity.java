@@ -52,6 +52,7 @@ public class MainActivity extends Activity {
 
     protected void onResume() {
         super.onResume();
+        try { ExtBridge.reload(); } catch (Throwable ignored) {}
         if (extScreenRefresh != null) extScreenRefresh.run();
     }
 

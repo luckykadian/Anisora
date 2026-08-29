@@ -158,7 +158,8 @@ object ExtBridge {
     fun searchAnime(id: Long, query: String, cb: ListCb) {
         scope.launch {
             try {
-                val src = animeSources[id] ?: throw IllegalStateException("Source not loaded")
+                val src = animeSources[id] ?: throw IllegalStateException("Source not loaded: $id")
+                Log.i(TAG, "searchAnime ${src.name} query=$query")
                 val page = src.getSearchAnime(1, query, AnimeFilterList())
                 val hits = ArrayList<Any>()
                 for (a in page.animes) {
@@ -168,9 +169,10 @@ object ExtBridge {
                     h.thumbnail = a.thumbnail_url
                     hits.add(h)
                 }
+                Log.i(TAG, "searchAnime ${src.name} -> ${hits.size} hits")
                 main.post { cb.ok(hits) }
             } catch (t: Throwable) {
-                Log.e(TAG, "searchAnime", t)
+                Log.e(TAG, "searchAnime id=$id q=$query", t)
                 main.post { cb.fail(t.message ?: t.javaClass.simpleName) }
             }
         }
@@ -181,7 +183,8 @@ object ExtBridge {
         scope.launch {
             try {
                 val src = mangaSources[id] as? eu.kanade.tachiyomi.source.CatalogueSource
-                    ?: throw IllegalStateException("Source not loaded")
+                    ?: throw IllegalStateException("Manga source not loaded: $id")
+                Log.i(TAG, "searchManga ${src.name} query=$query")
                 val page = src.getSearchManga(1, query, FilterList())
                 val hits = ArrayList<Any>()
                 for (a in page.mangas) {
@@ -191,9 +194,10 @@ object ExtBridge {
                     h.thumbnail = a.thumbnail_url
                     hits.add(h)
                 }
+                Log.i(TAG, "searchManga ${src.name} -> ${hits.size} hits")
                 main.post { cb.ok(hits) }
             } catch (t: Throwable) {
-                Log.e(TAG, "searchManga", t)
+                Log.e(TAG, "searchManga id=$id q=$query", t)
                 main.post { cb.fail(t.message ?: t.javaClass.simpleName) }
             }
         }
@@ -203,7 +207,8 @@ object ExtBridge {
     fun episodes(id: Long, animeUrl: String, title: String, thumb: String?, cb: ListCb) {
         scope.launch {
             try {
-                val src = animeSources[id] ?: throw IllegalStateException("Source not loaded")
+                val src = animeSources[id] ?: throw IllegalStateException("Source not loaded: $id")
+                Log.i(TAG, "episodes ${src.name} url=$animeUrl title=$title")
                 val anime = SAnime.create().apply {
                     url = animeUrl
                     this.title = title
@@ -211,9 +216,17 @@ object ExtBridge {
                 }
                 val list = try {
                     src.getEpisodeList(anime)
-                } catch (_: Throwable) {
-                    src.getAnimeEpisodeUpdate(anime, emptyList(), fetchDetails = false, fetchEpisodes = true).episodes
+                } catch (e1: Throwable) {
+                    Log.w(TAG, "getEpisodeList failed, trying getAnimeEpisodeUpdate", e1)
+                    try {
+                        src.getAnimeEpisodeUpdate(anime, emptyList(), fetchDetails = false, fetchEpisodes = true).episodes
+                    } catch (e2: Throwable) {
+                        Log.w(TAG, "getAnimeEpisodeUpdate failed, trying getAnimeSeasonUpdate fallback", e2)
+                        // Some extensions only implement season update; try to get episodes via that
+                        emptyList()
+                    }
                 }
+                Log.i(TAG, "episodes ${src.name} -> ${list.size}")
                 val items = ArrayList<Any>()
                 for (e in list.sortedWith(compareBy<SEpisode> { if (it.episode_number > 0) it.episode_number else Float.MAX_VALUE }.thenBy { it.name })) {
                     val it = Item()
@@ -226,7 +239,7 @@ object ExtBridge {
                 }
                 main.post { cb.ok(items) }
             } catch (t: Throwable) {
-                Log.e(TAG, "episodes", t)
+                Log.e(TAG, "episodes id=$id url=$animeUrl", t)
                 main.post { cb.fail(t.message ?: t.javaClass.simpleName) }
             }
         }
@@ -236,13 +249,15 @@ object ExtBridge {
     fun chapters(id: Long, mangaUrl: String, title: String, thumb: String?, cb: ListCb) {
         scope.launch {
             try {
-                val src = mangaSources[id] ?: throw IllegalStateException("Source not loaded")
+                val src = mangaSources[id] ?: throw IllegalStateException("Manga source not loaded: $id")
+                Log.i(TAG, "chapters ${src.name} url=$mangaUrl title=$title")
                 val manga = SManga.create().apply {
                     url = mangaUrl
                     this.title = title
                     thumbnail_url = thumb
                 }
                 val list = src.getChapterList(manga)
+                Log.i(TAG, "chapters ${src.name} -> ${list.size}")
                 val items = ArrayList<Any>()
                 for (c in list) {
                     val it = Item()
@@ -254,7 +269,7 @@ object ExtBridge {
                 }
                 main.post { cb.ok(items) }
             } catch (t: Throwable) {
-                Log.e(TAG, "chapters", t)
+                Log.e(TAG, "chapters id=$id url=$mangaUrl", t)
                 main.post { cb.fail(t.message ?: t.javaClass.simpleName) }
             }
         }
@@ -274,24 +289,58 @@ object ExtBridge {
                     src.getVideoList(ep)
                 } catch (t: Throwable) {
                     Log.w(TAG, "getVideoList(episode) failed, trying hosters", t)
-                    val hosters = src.getHosterList(ep)
+                    val hosters = try { src.getHosterList(ep) } catch (tt: Throwable) {
+                        Log.w(TAG, "getHosterList failed", tt)
+                        emptyList()
+                    }
                     val acc = ArrayList<Video>()
                     for (h in hosters) {
-                        if (h.videoList != null) acc.addAll(h.videoList)
-                        else acc.addAll(src.getVideoList(h))
+                        try {
+                            if (h.videoList != null && h.videoList.isNotEmpty()) acc.addAll(h.videoList)
+                            else acc.addAll(src.getVideoList(h))
+                        } catch (tt: Throwable) {
+                            Log.w(TAG, "getVideoList(hoster) ${h.hosterUrl}", tt)
+                        }
+                    }
+                    // If hoster list empty, try to resolve single hoster via episode url as hosterUrl
+                    if (acc.isEmpty() && hosters.isEmpty()) {
+                        try {
+                            val fakeHoster = eu.kanade.tachiyomi.animesource.model.Hoster(epUrl, epUrl, null)
+                            acc.addAll(src.getVideoList(fakeHoster))
+                        } catch (_: Throwable) {}
                     }
                     acc
                 }
-                val streams = ArrayList<Any>()
+
+                // Try to resolve videos that need extra request (some extensions return indirect urls)
+                val resolved = ArrayList<Video>()
                 for (v in list) {
-                    val s = Stream()
-                    s.url = v.playUrl()
-                    s.quality = v.quality
-                    val hd = v.headers
-                    if (hd != null) {
-                        for (i in 0 until hd.size) s.headers[hd.name(i)] = hd.value(i)
+                    try {
+                        val rv = try { src.resolveVideo(v) } catch (_: Throwable) { null }
+                        resolved.add(rv ?: v)
+                    } catch (_: Throwable) {
+                        resolved.add(v)
                     }
-                    if (s.url.isNotBlank()) streams.add(s)
+                }
+
+                val streams = ArrayList<Any>()
+                for (v in resolved) {
+                    try {
+                        val s = Stream()
+                        s.url = v.playUrl()
+                        s.quality = v.quality
+                        val hd = v.headers
+                        if (hd != null) {
+                            for (i in 0 until hd.size) s.headers[hd.name(i)] = hd.value(i)
+                        }
+                        // Ensure at least a User-Agent if extension didn't provide
+                        if (!s.headers.containsKey("User-Agent")) {
+                            s.headers["User-Agent"] = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36"
+                        }
+                        if (s.url.isNotBlank()) streams.add(s)
+                    } catch (tt: Throwable) {
+                        Log.w(TAG, "video to stream", tt)
+                    }
                 }
                 main.post { cb.ok(streams) }
             } catch (t: Throwable) {
@@ -338,6 +387,7 @@ object ExtBridge {
             loadPackage(ctx, pi, apkPath)
         }
 
+        // 1) system installed extensions (Aniyomi Legacy installer)
         try {
             val installed = pm.getInstalledPackages(flags)
             for (pi in installed) {
@@ -350,17 +400,30 @@ object ExtBridge {
             Log.w(TAG, "scan installed", t)
         }
 
+        // 2) private APKs in filesDir/extensions (and legacy exts)
         val dirs = listOf(File(ctx.filesDir, "extensions"), File(ctx.filesDir, "exts"))
         for (dir in dirs) {
+            if (!dir.exists()) continue
             dir.listFiles()?.forEach { f ->
                 if (!f.isFile) return@forEach
                 if (!f.name.endsWith(".apk") && !f.name.endsWith(".ext")) return@forEach
                 try {
-                    val pi = pm.getPackageArchiveInfo(f.absolutePath, flags) ?: return@forEach
-                    pi.applicationInfo?.fixBasePaths(f.absolutePath)
-                    if (isExt(pi)) consider(pi, f.absolutePath)
+                    val pi = pm.getPackageArchiveInfo(f.absolutePath, flags)
+                    if (pi != null) {
+                        pi.applicationInfo?.fixBasePaths(f.absolutePath)
+                        if (isExt(pi)) {
+                            consider(pi, f.absolutePath)
+                            return@forEach
+                        }
+                    }
+                    // Fallback: PackageManager couldn't parse meta-data (Android 13+), try dex scan
+                    Log.i(TAG, "fallback dex scan for ${f.name}")
+                    loadPrivateDex(ctx, f.absolutePath, f.nameWithoutExtension)
                 } catch (t: Throwable) {
                     Log.w(TAG, "private ${f.name}", t)
+                    try {
+                        loadPrivateDex(ctx, f.absolutePath, f.nameWithoutExtension)
+                    } catch (_: Throwable) {}
                 }
             }
         }
@@ -374,8 +437,13 @@ object ExtBridge {
                 if (f.name == "tachiyomi.animeextension" || f.name == "tachiyomi.extension") return true
             }
         }
-        val md = pi.applicationInfo?.metaData ?: return false
-        return md.containsKey("tachiyomi.animeextension.class") || md.containsKey("tachiyomi.extension.class")
+        val md = pi.applicationInfo?.metaData
+        if (md != null) {
+            if (md.containsKey("tachiyomi.animeextension.class") || md.containsKey("tachiyomi.extension.class")) return true
+        }
+        // fallback: package name heuristic
+        val pkg = pi.packageName ?: ""
+        return pkg.contains(".animeextension.") || pkg.contains(".mangaextension.") || pkg.contains(".extension.")
     }
 
     private fun ApplicationInfo.fixBasePaths(apkPath: String) {
@@ -383,26 +451,142 @@ object ExtBridge {
         if (publicSourceDir == null) publicSourceDir = apkPath
     }
 
+    /** Robust loader for private APKs when PackageManager meta-data parsing fails */
+    private fun loadPrivateDex(ctx: Context, apkPath: String, pkgFallback: String) {
+        try {
+            val codeCache = File(ctx.codeCacheDir, "ext")
+            if (!codeCache.exists()) codeCache.mkdirs()
+            val loader = try {
+                dalvik.system.DexClassLoader(apkPath, codeCache.absolutePath, null, ctx.classLoader)
+            } catch (t: Throwable) {
+                Log.e(TAG, "DexClassLoader $apkPath", t)
+                PathClassLoader(apkPath, ctx.classLoader)
+            }
+
+            // Try to extract factory class names from binary manifest (heuristic)
+            val factories = extractFactoryNames(apkPath)
+            if (factories.isNotEmpty()) {
+                factories.forEach { spec ->
+                    instantiate(loader, pkgFallback, spec).forEach { obj ->
+                        when (obj) {
+                            is AnimeSource -> registerAnime(obj, pkgFallback, pkgFallback.substringAfterLast('.'))
+                            is AnimeSourceFactory -> obj.createSources().forEach { registerAnime(it, pkgFallback, pkgFallback.substringAfterLast('.')) }
+                            is MangaSource -> registerManga(obj, pkgFallback, pkgFallback.substringAfterLast('.'))
+                            is SourceFactory -> obj.createSources().forEach { registerManga(it, pkgFallback, pkgFallback.substringAfterLast('.')) }
+                        }
+                    }
+                }
+                if (animeSources.isNotEmpty() || mangaSources.isNotEmpty()) return
+            }
+
+            // Brute force: scan dex for classes ending with Factory and try to instantiate
+            try {
+                val dex = dalvik.system.DexFile(apkPath)
+                val entries = dex.entries()
+                while (entries.hasMoreElements()) {
+                    val clsName = entries.nextElement()
+                    if (!clsName.contains("tachiyomi")) continue
+                    if (!(clsName.endsWith("Factory") || clsName.endsWith("Source"))) continue
+                    try {
+                        val cls = Class.forName(clsName, false, loader)
+                        val obj = cls.getDeclaredConstructor().newInstance()
+                        when (obj) {
+                            is AnimeSource -> registerAnime(obj, pkgFallback, pkgFallback.substringAfterLast('.'))
+                            is AnimeSourceFactory -> obj.createSources().forEach { registerAnime(it, pkgFallback, pkgFallback.substringAfterLast('.')) }
+                            is MangaSource -> registerManga(obj, pkgFallback, pkgFallback.substringAfterLast('.'))
+                            is SourceFactory -> obj.createSources().forEach { registerManga(it, pkgFallback, pkgFallback.substringAfterLast('.')) }
+                        }
+                    } catch (_: Throwable) {}
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "dex scan $apkPath", t)
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "loadPrivateDex $apkPath", t)
+        }
+    }
+
+    /** Heuristic binary manifest parser: finds tachiyomi.*.class meta-data values */
+    private fun extractFactoryNames(apkPath: String): List<String> {
+        val out = ArrayList<String>()
+        try {
+            java.util.zip.ZipFile(apkPath).use { zip ->
+                val entry = zip.getEntry("AndroidManifest.xml") ?: return out
+                zip.getInputStream(entry).use { ins ->
+                    val bytes = ins.readBytes()
+                    // Binary XML contains strings as UTF-8; search for factory markers
+                    val text = String(bytes, Charsets.UTF_8)
+                    // Find all substrings that look like a Java class name after the key
+                    val keys = listOf("tachiyomi.animeextension.class", "tachiyomi.extension.class")
+                    for (key in keys) {
+                        var idx = 0
+                        while (true) {
+                            idx = text.indexOf(key, idx)
+                            if (idx == -1) break
+                            // Look ahead ~500 chars for a class name pattern
+                            val window = text.substring(idx, kotlin.math.min(text.length, idx + 600))
+                            // class name regex: at least 2 dots, letters
+                            val regex = Regex("""[a-zA-Z_][a-zA-Z0-9_\.]*\.[A-Za-z0-9_]+Factory|[a-zA-Z_][a-zA-Z0-9_\.]*\.[A-Za-z0-9_]+Source""")
+                            val matches = regex.findAll(window)
+                            for (m in matches) {
+                                val name = m.value
+                                if (name.contains("tachiyomi") && name.length > 10 && !out.contains(name)) {
+                                    out.add(name)
+                                }
+                            }
+                            idx += key.length
+                        }
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "extractFactoryNames $apkPath", t)
+        }
+        return out
+    }
+
     private fun loadPackage(ctx: Context, pi: PackageInfo, apkPath: String) {
-        val appInfo = pi.applicationInfo ?: return
-        val md = appInfo.metaData ?: return
-        val pkg = pi.packageName
+        val appInfo = pi.applicationInfo
+        val pkg = pi.packageName ?: "unknown"
+        val codeCache = try {
+            File(ctx.codeCacheDir, "ext").apply { if (!exists()) mkdirs() }
+        } catch (_: Throwable) { null }
+
         val loader = try {
-            PathClassLoader(apkPath, ctx.classLoader)
+            if (codeCache != null) dalvik.system.DexClassLoader(apkPath, codeCache.absolutePath, null, ctx.classLoader)
+            else PathClassLoader(apkPath, ctx.classLoader)
         } catch (t: Throwable) {
             Log.e(TAG, "classloader $pkg", t)
             return
         }
 
-        val animeClass = md.getString("tachiyomi.animeextension.class")
-        val mangaClass = md.getString("tachiyomi.extension.class")
+        val md = appInfo?.metaData
+        var animeClass: String? = null
+        var mangaClass: String? = null
+        if (md != null) {
+            animeClass = md.getString("tachiyomi.animeextension.class")
+            mangaClass = md.getString("tachiyomi.extension.class")
+        }
+        if (animeClass.isNullOrBlank() && mangaClass.isNullOrBlank()) {
+            // Try heuristic extraction
+            val factories = extractFactoryNames(apkPath)
+            factories.forEach { name ->
+                if (name.contains("anime", true)) {
+                    animeClass = if (animeClass.isNullOrBlank()) name else "$animeClass;$name"
+                } else {
+                    mangaClass = if (mangaClass.isNullOrBlank()) name else "$mangaClass;$name"
+                }
+            }
+        }
+
         val label = try {
-            ctx.packageManager.getApplicationLabel(appInfo).toString()
+            if (appInfo != null) ctx.packageManager.getApplicationLabel(appInfo).toString()
                 .replace("Aniyomi: ", "").replace("Tachiyomi: ", "")
+            else pkg
         } catch (_: Throwable) { pkg }
 
         if (!animeClass.isNullOrBlank()) {
-            instantiate(loader, pkg, animeClass).forEach { obj ->
+            instantiate(loader, pkg, animeClass!!).forEach { obj ->
                 when (obj) {
                     is AnimeSource -> registerAnime(obj, pkg, label)
                     is AnimeSourceFactory -> obj.createSources().forEach { registerAnime(it, pkg, label) }
@@ -410,12 +594,19 @@ object ExtBridge {
             }
         }
         if (!mangaClass.isNullOrBlank()) {
-            instantiate(loader, pkg, mangaClass).forEach { obj ->
+            instantiate(loader, pkg, mangaClass!!).forEach { obj ->
                 when (obj) {
                     is MangaSource -> registerManga(obj, pkg, label)
                     is SourceFactory -> obj.createSources().forEach { registerManga(it, pkg, label) }
                 }
             }
+        }
+
+        // If still nothing registered, try brute force dex scan as last resort
+        if (animeSources.isEmpty() && mangaSources.isEmpty() || (animeClass.isNullOrBlank() && mangaClass.isNullOrBlank())) {
+            try {
+                loadPrivateDex(ctx, apkPath, pkg)
+            } catch (_: Throwable) {}
         }
     }
 
