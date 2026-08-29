@@ -1,0 +1,6 @@
+node_modules/
+dist/
+android/out/
+android-native/out/
+anisora-webview.apk
+*.log
