@@ -316,7 +316,22 @@ object ExtBridge {
                 val resolved = ArrayList<Video>()
                 for (v in list) {
                     try {
-                        val rv = try { src.resolveVideo(v) } catch (_: Throwable) { null }
+                        val rv = try {
+                            when (src) {
+                                is eu.kanade.tachiyomi.animesource.online.AnimeHttpSource -> src.resolveVideo(v)
+                                else -> {
+                                    // try via reflection for sources that implement resolveVideo
+                                    try {
+                                        val m = src::class.java.methods.firstOrNull { it.name == "resolveVideo" && it.parameterCount == 1 }
+                                        if (m != null) {
+                                            @Suppress("UNCHECKED_CAST")
+                                            val r = m.invoke(src, v) as? Video
+                                            r
+                                        } else v
+                                    } catch (_: Throwable) { v }
+                                }
+                            }
+                        } catch (_: Throwable) { null }
                         resolved.add(rv ?: v)
                     } catch (_: Throwable) {
                         resolved.add(v)
