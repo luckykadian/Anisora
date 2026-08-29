@@ -6,14 +6,14 @@ plugins {
 
 android {
     namespace "app.anisora"
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "app.anisora"
         minSdk 21
-        targetSdk 34
-        versionCode 8
-        versionName "0.8.0-demo"
+        targetSdk 35
+        versionCode 9
+        versionName "0.9.0-demo"
         multiDexEnabled true
     }
 
