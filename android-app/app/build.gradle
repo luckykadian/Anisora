@@ -18,10 +18,10 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "1.8" }
+    kotlinOptions { jvmTarget = "17" }
 
     buildTypes {
         release {
@@ -53,7 +53,7 @@ dependencies {
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3"
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.7.3"
-    // OkHttp 5.1.0 - supports compileSdk 34, has CacheControl.maxAge(Duration)
+    // OkHttp 5.1.0 - has CacheControl.maxAge(Duration), works with compileSdk 35
     implementation "com.squareup.okhttp3:okhttp:5.1.0"
     implementation "com.squareup.okhttp3:logging-interceptor:5.1.0"
     implementation "com.squareup.okhttp3:okhttp-brotli:5.1.0"
