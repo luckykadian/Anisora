@@ -317,12 +317,30 @@ object ExtBridge {
         scope.launch {
             try {
                 val src = animeSources[id] ?: throw IllegalStateException("Source not loaded")
+                // Resolve relative URL against baseUrl if needed
+                val resolvedEpUrl = try {
+                    if (epUrl.startsWith("http")) epUrl
+                    else {
+                        val base = when (src) {
+                            is eu.kanade.tachiyomi.animesource.online.AnimeHttpSource -> src.baseUrl
+                            else -> {
+                                try {
+                                    val f = src::class.java.methods.firstOrNull { it.name == "getBaseUrl" }
+                                    f?.invoke(src) as? String
+                                } catch (_: Throwable) { null }
+                            }
+                        }
+                        if (base != null && epUrl.startsWith("/")) base.trimEnd('/') + epUrl
+                        else if (base != null) base.trimEnd('/') + "/" + epUrl.trimStart('/')
+                        else epUrl
+                    }
+                } catch (_: Throwable) { epUrl }
                 val ep = SEpisode.create().apply {
-                    url = epUrl
+                    url = resolvedEpUrl
                     name = epName
                     episode_number = number
                 }
-                Log.i(TAG, "videos ${src.name} epUrl=$epUrl epName=$epName")
+                Log.i(TAG, "videos ${src.name} epUrl=$epUrl resolved=$resolvedEpUrl epName=$epName")
                 val list: List<Video> = try {
                     src.getVideoList(ep)
                 } catch (t: Throwable) {
@@ -344,10 +362,10 @@ object ExtBridge {
                     }
                     if (acc.isEmpty() && hosters.isEmpty()) {
                         try {
-                            val fakeHoster = eu.kanade.tachiyomi.animesource.model.Hoster(epUrl, epUrl, null)
+                            val fakeHoster = eu.kanade.tachiyomi.animesource.model.Hoster(resolvedEpUrl, resolvedEpUrl, null)
                             acc.addAll(src.getVideoList(fakeHoster))
                         } catch (tt: Throwable) {
-                            Log.w(TAG, "fakeHoster fallback failed", tt)
+                            Log.w(TAG, "fakeHoster fallback failed for $resolvedEpUrl", tt)
                         }
                     }
                     acc
