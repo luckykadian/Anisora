@@ -53,11 +53,11 @@ dependencies {
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3"
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.7.3"
-    // OkHttp 5.5.0 - extensions compiled against 5.x expect CacheControl.Builder.maxAge(Duration) etc
-    implementation "com.squareup.okhttp3:okhttp:5.5.0"
-    implementation "com.squareup.okhttp3:logging-interceptor:5.5.0"
-    implementation "com.squareup.okhttp3:okhttp-brotli:5.5.0"
-    implementation "com.squareup.okhttp3:okhttp-dnsoverhttps:5.5.0"
+    // OkHttp 5.1.0 - supports compileSdk 34, has CacheControl.maxAge(Duration)
+    implementation "com.squareup.okhttp3:okhttp:5.1.0"
+    implementation "com.squareup.okhttp3:logging-interceptor:5.1.0"
+    implementation "com.squareup.okhttp3:okhttp-brotli:5.1.0"
+    implementation "com.squareup.okhttp3:okhttp-dnsoverhttps:5.1.0"
     implementation "org.jsoup:jsoup:1.17.2"
     implementation "io.reactivex:rxjava:1.3.8"
     implementation "androidx.media3:media3-exoplayer:1.4.1"
