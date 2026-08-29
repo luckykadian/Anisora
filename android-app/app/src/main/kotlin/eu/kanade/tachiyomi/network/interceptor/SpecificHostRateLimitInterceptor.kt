@@ -2,6 +2,7 @@
 package eu.kanade.tachiyomi.network.interceptor
 
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
@@ -29,7 +30,7 @@ fun OkHttpClient.Builder.rateLimitHost(
     period: Long = 1,
     unit: TimeUnit = TimeUnit.SECONDS,
 ): OkHttpClient.Builder {
-    val host = try { HttpUrl.get(url).host } catch (_: Exception) { url }
+    val host = try { url.toHttpUrlOrNull()?.host ?: url } catch (_: Exception) { url }
     return addInterceptor(RateLimitInterceptor(host, permits, period.toDuration(unit.toDurationUnit())))
 }
 
@@ -38,7 +39,7 @@ fun OkHttpClient.Builder.rateLimitHost(
     permits: Int,
     period: Duration = 1.seconds,
 ): OkHttpClient.Builder {
-    val host = try { HttpUrl.get(url).host } catch (_: Exception) { url }
+    val host = try { url.toHttpUrlOrNull()?.host ?: url } catch (_: Exception) { url }
     return addInterceptor(RateLimitInterceptor(host, permits, period))
 }
 
@@ -62,7 +63,7 @@ fun String.rateLimitHost(
     period: Long = 1,
     unit: TimeUnit = TimeUnit.SECONDS,
 ): OkHttpClient.Builder {
-    val h = try { HttpUrl.get(this).host } catch (_: Exception) { this }
+    val h = try { this.toHttpUrlOrNull()?.host ?: this } catch (_: Exception) { this }
     return builder.addInterceptor(RateLimitInterceptor(h, permits, period.toDuration(unit.toDurationUnit())))
 }
 
@@ -71,7 +72,7 @@ fun String.rateLimitHost(
     permits: Int,
     period: Duration = 1.seconds,
 ): OkHttpClient.Builder {
-    val h = try { HttpUrl.get(this).host } catch (_: Exception) { this }
+    val h = try { this.toHttpUrlOrNull()?.host ?: this } catch (_: Exception) { this }
     return builder.addInterceptor(RateLimitInterceptor(h, permits, period))
 }
 
