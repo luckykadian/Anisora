@@ -22,7 +22,17 @@ public final class SpecificHostRateLimitInterceptor {
     }
 
     public static OkHttpClient.Builder rateLimitHost(OkHttpClient.Builder builder, HttpUrl httpUrl, int permits, Duration period) {
-        return builder.addInterceptor(new RateLimitInterceptor(httpUrl.host(), permits, period));
+        // Duration is inline value class - try to extract millis via getInWholeMilliseconds()
+        long millis = 1000L;
+        try {
+            millis = period.getInWholeMilliseconds();
+        } catch (Throwable ignored) {
+            try {
+                // fallback via toString parsing or default
+                millis = 1000L;
+            } catch (Throwable ignored2) {}
+        }
+        return builder.addInterceptor(new RateLimitInterceptor(httpUrl.host(), permits, millis, TimeUnit.MILLISECONDS));
     }
 
     public static OkHttpClient.Builder rateLimitHost(OkHttpClient.Builder builder, String url, int permits, long period, TimeUnit unit) {
@@ -40,7 +50,11 @@ public final class SpecificHostRateLimitInterceptor {
             HttpUrl parsed = HttpUrl.parse(url);
             if (parsed != null) host = parsed.host();
         } catch (Exception ignored) {}
-        return builder.addInterceptor(new RateLimitInterceptor(host, permits, period));
+        long millis = 1000L;
+        try {
+            millis = period.getInWholeMilliseconds();
+        } catch (Throwable ignored) {}
+        return builder.addInterceptor(new RateLimitInterceptor(host, permits, millis, TimeUnit.MILLISECONDS));
     }
 
     // Reverse order: HttpUrl first, Builder second (old extensions)
@@ -66,7 +80,9 @@ public final class SpecificHostRateLimitInterceptor {
     }
 
     public static RateLimitInterceptor rateLimitHost(HttpUrl httpUrl, int permits, Duration period) {
-        return new RateLimitInterceptor(httpUrl.host(), permits, period);
+        long millis = 1000L;
+        try { millis = period.getInWholeMilliseconds(); } catch (Throwable ignored) {}
+        return new RateLimitInterceptor(httpUrl.host(), permits, millis, TimeUnit.MILLISECONDS);
     }
 
     public static RateLimitInterceptor rateLimitHost(String host, int permits, long period, TimeUnit unit) {
@@ -74,6 +90,8 @@ public final class SpecificHostRateLimitInterceptor {
     }
 
     public static RateLimitInterceptor rateLimitHost(String host, int permits, Duration period) {
-        return new RateLimitInterceptor(host, permits, period);
+        long millis = 1000L;
+        try { millis = period.getInWholeMilliseconds(); } catch (Throwable ignored) {}
+        return new RateLimitInterceptor(host, permits, millis, TimeUnit.MILLISECONDS);
     }
 }
