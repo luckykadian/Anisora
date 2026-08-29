@@ -157,49 +157,86 @@ object ExtBridge {
     @JvmStatic
     fun searchAnime(id: Long, query: String, cb: ListCb) {
         scope.launch {
-            try {
-                val src = animeSources[id] ?: throw IllegalStateException("Source not loaded: $id")
-                Log.i(TAG, "searchAnime ${src.name} query=$query")
-                val page = src.getSearchAnime(1, query, AnimeFilterList())
-                val hits = ArrayList<Any>()
-                for (a in page.animes) {
-                    val h = Hit()
-                    h.url = a.url
-                    h.title = a.title
-                    h.thumbnail = a.thumbnail_url
-                    hits.add(h)
+            var attempt = 0
+            var lastError: Throwable? = null
+            while (attempt < 4) {
+                try {
+                    val src = animeSources[id] ?: throw IllegalStateException("Source not loaded: $id")
+                    Log.i(TAG, "searchAnime ${src.name} query=$query attempt=$attempt")
+                    val page = src.getSearchAnime(1, query, AnimeFilterList())
+                    val hits = ArrayList<Any>()
+                    for (a in page.animes) {
+                        val h = Hit()
+                        h.url = a.url
+                        h.title = a.title
+                        h.thumbnail = a.thumbnail_url
+                        hits.add(h)
+                    }
+                    Log.i(TAG, "searchAnime ${src.name} -> ${hits.size} hits")
+                    main.post { cb.ok(hits) }
+                    return@launch
+                } catch (t: Throwable) {
+                    lastError = t
+                    val msg = t.message ?: ""
+                    val is429 = msg.contains("429") || msg.contains("Too Many") || t.toString().contains("429")
+                    Log.e(TAG, "searchAnime id=$id q=$query attempt=$attempt error=$msg is429=$is429", t)
+                    if (is429) {
+                        attempt++
+                        val backoff = 800L * (1 shl attempt) + (Math.random() * 400).toLong()
+                        kotlinx.coroutines.delay(backoff)
+                        continue
+                    } else {
+                        break
+                    }
                 }
-                Log.i(TAG, "searchAnime ${src.name} -> ${hits.size} hits")
-                main.post { cb.ok(hits) }
-            } catch (t: Throwable) {
-                Log.e(TAG, "searchAnime id=$id q=$query", t)
-                main.post { cb.fail(t.message ?: t.javaClass.simpleName) }
             }
+            val err = lastError
+            val friendly = when {
+                err?.message?.contains("429") == true -> "Rate limited (429). Please wait a few seconds and try again."
+                err?.toString()?.contains("429") == true -> "Rate limited (429). Please wait a few seconds and try again."
+                else -> err?.message ?: err?.javaClass?.simpleName ?: "Search failed"
+            }
+            main.post { cb.fail(friendly) }
         }
     }
 
     @JvmStatic
     fun searchManga(id: Long, query: String, cb: ListCb) {
         scope.launch {
-            try {
-                val src = mangaSources[id] as? eu.kanade.tachiyomi.source.CatalogueSource
-                    ?: throw IllegalStateException("Manga source not loaded: $id")
-                Log.i(TAG, "searchManga ${src.name} query=$query")
-                val page = src.getSearchManga(1, query, FilterList())
-                val hits = ArrayList<Any>()
-                for (a in page.mangas) {
-                    val h = Hit()
-                    h.url = a.url
-                    h.title = a.title
-                    h.thumbnail = a.thumbnail_url
-                    hits.add(h)
+            var attempt = 0
+            var lastError: Throwable? = null
+            while (attempt < 4) {
+                try {
+                    val src = mangaSources[id] as? eu.kanade.tachiyomi.source.CatalogueSource
+                        ?: throw IllegalStateException("Manga source not loaded: $id")
+                    Log.i(TAG, "searchManga ${src.name} query=$query attempt=$attempt")
+                    val page = src.getSearchManga(1, query, FilterList())
+                    val hits = ArrayList<Any>()
+                    for (a in page.mangas) {
+                        val h = Hit()
+                        h.url = a.url
+                        h.title = a.title
+                        h.thumbnail = a.thumbnail_url
+                        hits.add(h)
+                    }
+                    Log.i(TAG, "searchManga ${src.name} -> ${hits.size} hits")
+                    main.post { cb.ok(hits) }
+                    return@launch
+                } catch (t: Throwable) {
+                    lastError = t
+                    val msg = t.message ?: ""
+                    val is429 = msg.contains("429") || t.toString().contains("429")
+                    Log.e(TAG, "searchManga id=$id q=$query attempt=$attempt", t)
+                    if (is429) {
+                        attempt++
+                        kotlinx.coroutines.delay(800L * (1 shl attempt))
+                        continue
+                    } else break
                 }
-                Log.i(TAG, "searchManga ${src.name} -> ${hits.size} hits")
-                main.post { cb.ok(hits) }
-            } catch (t: Throwable) {
-                Log.e(TAG, "searchManga id=$id q=$query", t)
-                main.post { cb.fail(t.message ?: t.javaClass.simpleName) }
             }
+            val err = lastError
+            val friendly = if (err?.message?.contains("429") == true || err.toString().contains("429")) "Rate limited (429). Please wait." else err?.message ?: "Search failed"
+            main.post { cb.fail(friendly) }
         }
     }
 
@@ -285,6 +322,7 @@ object ExtBridge {
                     name = epName
                     episode_number = number
                 }
+                Log.i(TAG, "videos ${src.name} epUrl=$epUrl epName=$epName")
                 val list: List<Video> = try {
                     src.getVideoList(ep)
                 } catch (t: Throwable) {
@@ -293,26 +331,31 @@ object ExtBridge {
                         Log.w(TAG, "getHosterList failed", tt)
                         emptyList()
                     }
+                    Log.i(TAG, "hosters found=${hosters.size}")
                     val acc = ArrayList<Video>()
                     for (h in hosters) {
                         try {
+                            Log.i(TAG, "try hoster ${h.hosterUrl} hasVideoList=${h.videoList?.size}")
                             if (h.videoList != null && h.videoList.isNotEmpty()) acc.addAll(h.videoList)
                             else acc.addAll(src.getVideoList(h))
                         } catch (tt: Throwable) {
                             Log.w(TAG, "getVideoList(hoster) ${h.hosterUrl}", tt)
                         }
                     }
-                    // If hoster list empty, try to resolve single hoster via episode url as hosterUrl
                     if (acc.isEmpty() && hosters.isEmpty()) {
                         try {
                             val fakeHoster = eu.kanade.tachiyomi.animesource.model.Hoster(epUrl, epUrl, null)
                             acc.addAll(src.getVideoList(fakeHoster))
-                        } catch (_: Throwable) {}
+                        } catch (tt: Throwable) {
+                            Log.w(TAG, "fakeHoster fallback failed", tt)
+                        }
                     }
                     acc
                 }
 
-                // Try to resolve videos that need extra request (some extensions return indirect urls)
+                Log.i(TAG, "videos raw list size=${list.size}")
+
+                // Try to resolve videos that need extra request
                 val resolved = ArrayList<Video>()
                 for (v in list) {
                     try {
@@ -320,7 +363,6 @@ object ExtBridge {
                             when (src) {
                                 is eu.kanade.tachiyomi.animesource.online.AnimeHttpSource -> src.resolveVideo(v)
                                 else -> {
-                                    // try via reflection for sources that implement resolveVideo
                                     try {
                                         val m = src::class.java.methods.firstOrNull { it.name == "resolveVideo" && it.parameterCount == 1 }
                                         if (m != null) {
@@ -331,7 +373,10 @@ object ExtBridge {
                                     } catch (_: Throwable) { v }
                                 }
                             }
-                        } catch (_: Throwable) { null }
+                        } catch (e: Throwable) {
+                            Log.w(TAG, "resolveVideo failed for ${v.quality} ${v.url.take(100)}", e)
+                            null
+                        }
                         resolved.add(rv ?: v)
                     } catch (_: Throwable) {
                         resolved.add(v)
@@ -348,14 +393,22 @@ object ExtBridge {
                         if (hd != null) {
                             for (i in 0 until hd.size) s.headers[hd.name(i)] = hd.value(i)
                         }
-                        // Ensure at least a User-Agent if extension didn't provide
                         if (!s.headers.containsKey("User-Agent")) {
                             s.headers["User-Agent"] = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36"
                         }
-                        if (s.url.isNotBlank()) streams.add(s)
+                        // Some extensions return empty url but videoUrl inside; playUrl() already handles
+                        if (s.url.isNotBlank()) {
+                            streams.add(s)
+                        } else {
+                            Log.w(TAG, "skip video with blank url quality=${v.quality} url=${v.url} videoUrl=${v.videoUrl}")
+                        }
                     } catch (tt: Throwable) {
                         Log.w(TAG, "video to stream", tt)
                     }
+                }
+                Log.i(TAG, "videos resolved=${resolved.size} streams=${streams.size}")
+                if (streams.isEmpty()) {
+                    Log.e(TAG, "videos empty after resolve! raw=${list.size} resolved=${resolved.size} epUrl=$epUrl src=${src.name}")
                 }
                 main.post { cb.ok(streams) }
             } catch (t: Throwable) {

@@ -341,12 +341,12 @@ public class WatchPane {
         card.addView(scrim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         LinearLayout rowL = Ui.row(c);
-        rowL.setPadding(Ui.dp(16), Ui.dp(18), Ui.dp(14), Ui.dp(18));
+        rowL.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(12), Ui.dp(12));
         LinearLayout tcol = Ui.col(c);
         String unit = isAnime ? "Episode" : "Chapter";
-        tcol.addView(Ui.text(c, "Continue : " + unit + " " + row.displayNum, 15, 0xFFFFFFFF, Theme.SANS_BOLD));
-        TextView sub = Ui.oneLine(Ui.text(c, row.name, 12, 0xCCFFFFFF, Theme.SANS_MED));
-        sub.setPadding(0, Ui.dp(4), 0, 0);
+        tcol.addView(Ui.text(c, "Continue : " + unit + " " + row.displayNum, 13, 0xFFFFFFFF, Theme.SANS_BOLD));
+        TextView sub = Ui.oneLine(Ui.text(c, row.name, 11, 0xCCFFFFFF, Theme.SANS_MED));
+        sub.setPadding(0, Ui.dp(2), 0, 0);
         tcol.addView(sub);
         LinearLayout.LayoutParams tp = Ui.lp(0, ViewGroup.LayoutParams.WRAP_CONTENT);
         tp.weight = 1;
@@ -354,12 +354,12 @@ public class WatchPane {
 
         FrameLayout play = new FrameLayout(c);
         play.setBackground(Ui.circle(0xE6FFFFFF));
-        Icons pi = new Icons(c, "play", 16, 0xFF111111);
-        FrameLayout.LayoutParams pip = new FrameLayout.LayoutParams(Ui.dp(16), Ui.dp(16));
+        Icons pi = new Icons(c, "play", 14, 0xFF111111);
+        FrameLayout.LayoutParams pip = new FrameLayout.LayoutParams(Ui.dp(14), Ui.dp(14));
         pip.gravity = Gravity.CENTER;
         pip.leftMargin = Ui.dp(2);
         play.addView(pi, pip);
-        rowL.addView(play, Ui.lp(Ui.dp(44), Ui.dp(44)));
+        rowL.addView(play, Ui.lp(Ui.dp(36), Ui.dp(36)));
         card.addView(rowL, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         View.OnClickListener go = new View.OnClickListener() {

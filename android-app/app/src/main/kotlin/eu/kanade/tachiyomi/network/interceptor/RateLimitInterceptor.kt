@@ -54,12 +54,22 @@ fun OkHttpClient.Builder.rateLimit(permits: Int, period: Duration = 1.seconds) =
     addInterceptor(RateLimitInterceptor(null, permits, period))
 
 /** We can probably accept domains or wildcards by comparing with [endsWith], etc. */
-@Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
-internal class RateLimitInterceptor(
+class RateLimitInterceptor(
     private val host: String?,
     private val permits: Int,
     period: Duration,
 ) : Interceptor {
+
+    companion object {
+        @JvmStatic
+        fun rateLimitHost(host: String, permits: Int, period: Long, unit: TimeUnit): RateLimitInterceptor {
+            return RateLimitInterceptor(host, permits, period.toDuration(unit.toDurationUnit()))
+        }
+        @JvmStatic
+        fun rateLimitHost(url: okhttp3.HttpUrl, permits: Int, period: Duration): RateLimitInterceptor {
+            return RateLimitInterceptor(url.host, permits, period)
+        }
+    }
 
     private val requestQueue = ArrayDeque<Long>(permits)
     private val rateLimitMillis = period.inWholeMilliseconds

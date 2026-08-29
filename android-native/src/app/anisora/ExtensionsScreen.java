@@ -163,12 +163,43 @@ public class ExtensionsScreen {
         }
         box.addView(Widgets.sectionHead(c, "download", "Available",
                 "From " + repos.length() + " Aniyomi repo" + (repos.length() == 1 ? "" : "s")));
+
+        // Search box for filtering available extensions by name/pkg
+        final EditText searchInput = new EditText(c);
+        searchInput.setHint("Search extension (e.g. Anikoto, HiAnime)");
+        searchInput.setHintTextColor(Theme.alpha(Theme.MUT, 160));
+        searchInput.setTextColor(Theme.TXT);
+        searchInput.setTextSize(12.5f);
+        searchInput.setTypeface(Theme.SANS_MED);
+        searchInput.setSingleLine(true);
+        searchInput.setBackground(Ui.rounded(Theme.BG1, 12, Theme.LINE, 1));
+        searchInput.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(12), Ui.dp(10));
+        searchInput.setCompoundDrawablesWithIntrinsicBounds(new Icons(c, "search", 14, Theme.MUT), null, null, null);
+        searchInput.setCompoundDrawablePadding(Ui.dp(8));
+        box.addView(searchInput, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, 0, 0, 12));
+
         final LinearLayout avail = Ui.col(c);
         box.addView(avail);
         for (int j = 0; j < 4; j++)
             avail.addView(Widgets.skel(c, 14), Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(60), 0, j == 0 ? 0 : 8, 0, 0));
 
         final List<JSONObject> found = new ArrayList<JSONObject>();
+        final String[] query = {""};
+        final Runnable[] doRender = new Runnable[1];
+        doRender[0] = new Runnable() {
+            public void run() {
+                renderAvailable(c, app, avail, found, query[0], rerender);
+            }
+        };
+        searchInput.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
+            public void onTextChanged(CharSequence s, int st, int b, int c) {}
+            public void afterTextChanged(android.text.Editable s) {
+                query[0] = s.toString().trim().toLowerCase();
+                if (found.size() > 0) doRender[0].run();
+            }
+        });
+
         final int[] pending = {repos.length()};
         for (int i = 0; i < repos.length(); i++) {
             final String repoUrl = repos.optString(i);
@@ -188,18 +219,18 @@ public class ExtensionsScreen {
                         }
                     } catch (Exception ignored) {
                     }
-                    if (--pending[0] == 0) renderAvailable(c, app, avail, found, rerender);
+                    if (--pending[0] == 0) doRender[0].run();
                 }
 
                 public void fail(Exception ex) {
-                    if (--pending[0] == 0) renderAvailable(c, app, avail, found, rerender);
+                    if (--pending[0] == 0) doRender[0].run();
                 }
             });
         }
     }
 
     private static void renderAvailable(Context c, MainActivity app, LinearLayout avail,
-                                        List<JSONObject> found, Runnable rerender) {
+                                        List<JSONObject> found, String q, Runnable rerender) {
         if (!avail.isAttachedToWindow()) return;
         avail.removeAllViews();
         if (found.isEmpty()) {
@@ -225,16 +256,33 @@ public class ExtensionsScreen {
             }
         });
         int shown = 0;
-        for (int i = 0; i < found.size() && shown < 150; i++) {
+        List<JSONObject> filtered = new ArrayList<JSONObject>();
+        String qq = q == null ? "" : q.toLowerCase();
+        for (int i = 0; i < found.size(); i++) {
             JSONObject e = found.get(i);
+            if (qq.length() > 0) {
+                String name = e.optString("name", "").toLowerCase();
+                String pkg = e.optString("pkg", "").toLowerCase();
+                String lang = e.optString("lang", "").toLowerCase();
+                if (!name.contains(qq) && !pkg.contains(qq) && !lang.contains(qq)) continue;
+            }
+            filtered.add(e);
+        }
+        if (filtered.isEmpty() && qq.length() > 0) {
+            avail.addView(Widgets.emptyState(c, "search", "No match for \"" + q + "\"",
+                    "Try a different keyword or clear the search."));
+            return;
+        }
+        for (int i = 0; i < filtered.size() && shown < 150; i++) {
+            JSONObject e = filtered.get(i);
             String pkg = e.optString("pkg");
             if (!seen.add(pkg) || reg.has(pkg) || sysPkgs.contains(pkg)) continue;
             avail.addView(extRow(c, app, e, e.optString("_repo"), false, rerender),
                     Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, shown == 0 ? 0 : 8, 0, 0));
             shown++;
         }
-        if (found.size() > shown) {
-            TextView more = Ui.text(c, "+ " + (found.size() - shown) + " more in these repos", 11.5f, Theme.MUT, Theme.SANS_MED);
+        if (filtered.size() > shown) {
+            TextView more = Ui.text(c, "+ " + (filtered.size() - shown) + " more" + (qq.length() > 0 ? " for \"" + q + "\"" : " in these repos"), 11.5f, Theme.MUT, Theme.SANS_MED);
             more.setGravity(Gravity.CENTER);
             more.setPadding(0, Ui.dp(14), 0, 0);
             avail.addView(more, Ui.lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));

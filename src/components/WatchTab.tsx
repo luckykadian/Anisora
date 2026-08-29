@@ -181,12 +181,12 @@ export function WatchTab({ d }: { d: any }) {
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={SPRING} className="relative overflow-hidden rounded-[18px] border border-line bg-bg2">
           <div className="absolute inset-0">{settings.showThumbs && next.thumb ? <Art src={next.thumb} alt="" className="h-full w-full opacity-55" /> : <div className="h-full w-full bg-gradient-to-br from-acc/20 via-transparent to-transparent" />}</div>
           <div className="absolute inset-0 bg-black/40" />
-          <div className="relative flex items-center gap-4 p-4">
+          <div className="relative flex items-center gap-3 p-3">
             <div className="min-w-0 flex-1">
-              <p className="font-bold text-white text-[15px]">Continue : {isAnime ? `Episode ${next.n}` : `Chapter ${next.n}`}</p>
-              <p className="mt-1 truncate text-[12px] text-white/70">{next.title}</p>
+              <p className="font-bold text-white text-[13px]">Continue : {isAnime ? `Episode ${next.n}` : `Chapter ${next.n}`}</p>
+              <p className="mt-0.5 truncate text-[11px] text-white/70">{next.title}</p>
             </div>
-            <button onClick={() => setPlayer(next)} className="grid h-11 w-11 place-items-center rounded-full bg-white text-black shadow-glow"><Play size={16} className="ml-0.5 fill-current" /></button>
+            <button onClick={() => setPlayer(next)} className="grid h-9 w-9 place-items-center rounded-full bg-white text-black shadow-glow"><Play size={14} className="ml-0.5 fill-current" /></button>
           </div>
         </motion.div>
       )}
