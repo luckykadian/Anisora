@@ -174,8 +174,6 @@ public class ExtensionsScreen {
         searchInput.setSingleLine(true);
         searchInput.setBackground(Ui.rounded(Theme.BG1, 12, Theme.LINE, 1));
         searchInput.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(12), Ui.dp(10));
-        searchInput.setCompoundDrawablesWithIntrinsicBounds(new Icons(c, "search", 14, Theme.MUT), null, null, null);
-        searchInput.setCompoundDrawablePadding(Ui.dp(8));
         box.addView(searchInput, Ui.lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, 0, 0, 12));
 
         final LinearLayout avail = Ui.col(c);
