@@ -60,6 +60,10 @@ class RateLimitInterceptor(
     period: Duration,
 ) : Interceptor {
 
+    constructor(host: String?, permits: Int, period: Long, unit: TimeUnit) : this(
+        host, permits, period.toDuration(unit.toDurationUnit())
+    )
+
     companion object {
         @JvmStatic
         fun rateLimitHost(host: String, permits: Int, period: Long, unit: TimeUnit): RateLimitInterceptor {
